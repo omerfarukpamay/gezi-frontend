@@ -1,0 +1,4069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chicago AI Planner | Auth + Profile + Planner</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://npmcdn.com/flatpickr/dist/themes/dark.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+
+    <style>
+        :root {
+            --primary-bg: #050816; 
+            --card-surface: #0F172A; 
+            --accent-gold: #FACC15; 
+            --accent-cyan: #67E8F9;
+            --primary-text: #E5E7EB;
+            --secondary-text: #9CA3AF;
+            --muted-text: #6B7280;
+            --success: #10B981;
+            --danger: #F97373;
+            --box-glow: 0 0 24px rgba(250, 204, 21, 0.25);
+            --ruler-track: #111827;
+            --blueprint-blue: #60A5FA;
+            --glass: rgba(15, 23, 42, 0.9);
+            --btn-bg-start: #FEF9C3;
+            --btn-bg-end: #FACC15;
+            --btn-text: #030712;
+            --btn-shadow: 0 14px 35px rgba(250, 204, 21, 0.65);
+            --btn-shadow-strong: 0 18px 50px rgba(250, 204, 21, 0.85);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Manrope', 'Inter', sans-serif; user-select: none; }
+        
+        body {
+            background-color: var(--primary-bg);
+            color: var(--primary-text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            overflow-y: auto;
+            touch-action: pan-y;
+            background-image: radial-gradient(circle at top left, rgba(250, 204, 21, 0.12), transparent 55%),
+                              radial-gradient(circle at bottom right, rgba(56, 189, 248, 0.12), transparent 50%),
+                              linear-gradient(145deg, #020617, #020617 40%, #020617);
+            background-size: cover;
+            background-position: center bottom;
+        }
+        :root[data-theme="liquid"] body {
+            background-image: radial-gradient(circle at 20% 20%, rgba(125, 211, 252, 0.2), transparent 42%),
+                              radial-gradient(circle at 78% 12%, rgba(165, 180, 252, 0.16), transparent 48%),
+                              linear-gradient(135deg, rgba(5, 9, 20, 0.7) 0%, rgba(11, 18, 38, 0.62) 38%, rgba(3, 6, 15, 0.56) 100%);
+            backdrop-filter: blur(14px) saturate(135%);
+        }
+        :root[data-theme="liquid"] .intro-content,
+        :root[data-theme="liquid"] .hero-copy-wrap,
+        :root[data-theme="liquid"] .hero-card-body,
+        :root[data-theme="liquid"] .evaluation-content,
+        :root[data-theme="liquid"] .profile-shell,
+        :root[data-theme="liquid"] .settings-content,
+        :root[data-theme="liquid"] .modal-container,
+        :root[data-theme="liquid"] .map-overlay {
+            background: linear-gradient(145deg, rgba(255,255,255,0.1), rgba(255,255,255,0.035));
+            border: 1px solid rgba(255,255,255,0.18);
+            box-shadow: 0 24px 70px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.05);
+            backdrop-filter: blur(22px) saturate(150%);
+        }
+        :root[data-theme="liquid"] .btn-secondary {
+            background: rgba(255,255,255,0.08);
+            color: var(--primary-text);
+            border: 1px solid rgba(255,255,255,0.18);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+        }
+        :root[data-theme="liquid"] .tab-nav {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.18);
+        }
+        :root[data-theme="liquid"] .tab-nav::before {
+            background: linear-gradient(120deg, rgba(125,211,252,0.95), rgba(165,180,252,0.9));
+            box-shadow: 0 15px 35px rgba(125,211,252,0.45);
+        }
+
+        header {
+            padding: 10px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+            background: radial-gradient(circle at top left, rgba(250, 204, 21, 0.12), transparent 60%),
+                        rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(14px);
+            z-index: 50;
+        }
+        .header-left { display: flex; align-items: center; gap: 10px; }
+        .logo { 
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700; 
+            font-size: 1.3rem; 
+            letter-spacing: -0.04em; 
+            cursor: pointer;
+        }
+        .logo span { 
+            color: var(--accent-gold); 
+            text-shadow: 0 0 18px rgba(250, 204, 21, 0.5);
+        }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .version { 
+            font-size: 0.7rem; 
+            color: var(--secondary-text); 
+            text-transform: uppercase;
+            letter-spacing: 0.16em;
+            white-space: nowrap;
+        }
+        .home-link {
+            background: transparent;
+            border: 1px solid rgba(148,163,184,0.4);
+            color: var(--secondary-text);
+            padding: 6px 10px;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: 0.18s ease;
+        }
+        .home-link:hover {
+            color: var(--primary-text);
+            border-color: var(--accent-gold);
+        }
+
+        /* TAB BAR (PLAN / PROFILE) */
+        .tab-nav {
+            position: relative;
+            display: flex;
+            background: rgba(15,23,42,0.92);
+            border-radius: 999px;
+            padding: 4px;
+            border: 1px solid rgba(148,163,184,0.6);
+            overflow: hidden;
+        }
+        .tab-nav::before {
+            content: '';
+            position: absolute;
+            top: 4px;
+            left: var(--tab-pill-left, 4px);
+            width: var(--tab-pill-width, 50%);
+            height: calc(100% - 8px);
+            background: radial-gradient(circle at top left, #FEF9C3, #FACC15);
+            border-radius: 999px;
+            box-shadow: 0 10px 30px rgba(250,204,21,0.45);
+            transition: all 0.25s ease;
+            z-index: 0;
+        }
+        .tab-btn {
+            border: none;
+            background: transparent;
+            color: var(--secondary-text);
+            font-size: 0.8rem;
+            padding: 5px 12px;
+            border-radius: 999px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            transition: 0.18s ease;
+            position: relative;
+            z-index: 1;
+        }
+        .tab-btn i {
+            font-size: 0.8rem;
+        }
+        .tab-btn.active {
+            color: #030712;
+            font-weight: 700;
+        }
+
+        /* HEADER PROFILE DROPDOWN */
+        .profile-menu {
+            position: relative;
+            display: none;
+            align-items: center;
+        }
+        .profile-menu-trigger {
+            border: 1px solid rgba(148,163,184,0.6);
+            background: rgba(15,23,42,0.98);
+            border-radius: 999px;
+            padding: 3px 8px 3px 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            color: var(--secondary-text);
+        }
+        .profile-menu-trigger i {
+            font-size: 0.7rem;
+        }
+        .profile-menu-avatar {
+            width: 22px;
+            height: 22px;
+            border-radius: 999px;
+            background: radial-gradient(circle at top left, #FEF9C3, #EAB308 65%, #854D0E 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: #111827;
+            box-shadow: 0 0 0 2px rgba(15,23,42,1);
+        }
+        .profile-menu-dropdown {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 6px);
+            background: var(--card-surface);
+            border-radius: 12px;
+            border: 1px solid rgba(55,65,81,0.9);
+            min-width: 190px;
+            box-shadow: 0 20px 45px rgba(15,23,42,0.95);
+            padding: 6px 0;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-6px) scale(0.98);
+            filter: blur(2px);
+            transition: opacity 0.18s ease, transform 0.2s ease, filter 0.2s ease;
+            z-index: 80;
+        }
+        .profile-menu-dropdown.open {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0) scale(1);
+            filter: blur(0);
+        }
+        .dropdown-item {
+            width: 100%;
+            padding: 7px 12px;
+            border: none;
+            background: transparent;
+            color: var(--primary-text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            text-align: left;
+        }
+        .dropdown-item i {
+            font-size: 0.85rem;
+            width: 16px;
+            text-align: center;
+        }
+        .dropdown-item span {
+            flex: 1;
+        }
+        .dropdown-item:hover {
+            background: rgba(15,23,42,0.96);
+        }
+        .dropdown-divider {
+            border-top: 1px solid rgba(31,41,55,0.9);
+            margin: 4px 0;
+        }
+        .dropdown-item.logout {
+            color: #FCA5A5;
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            padding: 24px 16px 24px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        section {
+            position: absolute;
+            width: 100%;
+            max-width: 600px;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.35s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -52%) scale(0.98);
+        }
+        
+        section.active {
+            opacity: 1;
+            pointer-events: all;
+            transform: translate(-50%, -50%) scale(1);
+            z-index: 10;
+            animation: fadeInUp 0.32s ease;
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translate(-50%, -48%) scale(0.99); }
+            to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+
+        .scrollable {
+            position: relative;
+            max-height: calc(100vh - 120px);
+            overflow-y: auto;
+            padding-bottom: 12px;
+        }
+        
+        .intro-content {
+            background: radial-gradient(circle at top left, rgba(250, 204, 21, 0.18), transparent 55%),
+                        rgba(15, 23, 42, 0.96);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(148, 163, 184, 0.45);
+            border-radius: 26px;
+            padding: 28px 24px 26px;
+            width: 100%;
+            max-width: 460px;
+            text-align: center;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.75);
+            position: relative;
+        }
+
+        @keyframes pulseGlow {
+            0% { box-shadow: 0 0 16px rgba(250, 204, 21, 0.28); }
+            50% { box-shadow: 0 0 32px rgba(250, 204, 21, 0.65); }
+            100% { box-shadow: 0 0 16px rgba(250, 204, 21, 0.28); }
+        }
+
+        .pulsing-glow {
+            animation: pulseGlow 5s ease-in-out infinite alternate;
+        }
+
+        .intro-content h1 {
+            font-size: 1.8rem;
+            font-weight: 800;
+            margin-bottom: 14px;
+            line-height: 1.1;
+        }
+
+        .ai-chip {
+            color: var(--accent-gold);
+            font-size: 2.1rem;
+            margin-bottom: 10px;
+            display: inline-block;
+            filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.75));
+        }
+
+        .btn {
+            background: linear-gradient(135deg, var(--btn-bg-start), var(--btn-bg-end));
+            color: var(--btn-text);
+            border: 1px solid rgba(255,255,255,0.12);
+            padding: 12px 26px;
+            border-radius: 999px;
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: var(--btn-shadow);
+            transition: 0.22s ease;
+            letter-spacing: 0.02em;
+        }
+        .btn:hover { 
+            transform: translateY(-2px); 
+            box-shadow: var(--btn-shadow-strong, var(--btn-shadow));
+        }
+        .btn:disabled { 
+            background: #4B5563; 
+            color: #9CA3AF;
+            cursor: not-allowed; 
+            box-shadow: none; 
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: rgba(15, 23, 42, 0.95);
+            color: var(--secondary-text);
+            border-radius: 999px;
+            border: 1px solid rgba(148, 163, 184, 0.6);
+            box-shadow: 0 0 0 rgba(0,0,0,0);
+        }
+        .btn-secondary:hover {
+            background: rgba(24, 35, 58, 0.98);
+            box-shadow: 0 10px 35px rgba(15,23,42,0.9);
+            transform: translateY(-1px);
+        }
+        /* HOME */
+        #home {
+            position: static;
+            width: 100%;
+            max-width: none;
+            transform: none;
+            left: auto;
+            top: auto;
+            display: none;
+            background-image: linear-gradient(180deg, rgba(5, 8, 22, 0.45) 0%, rgba(5, 8, 22, 0.65) 55%, rgba(5, 8, 22, 0.85) 100%), url('https://images.unsplash.com/photo-1484249170766-998fa6efe3c0?auto=format&fit=crop&w=1800&q=90');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        #home.active { display: block; }
+        .home-hero {
+            padding: 40px 18px 32px;
+            max-width: 1100px;
+            margin: 0 auto;
+            min-height: calc(100vh - 90px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .hero-split { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 26px; align-items: center; }
+        .hero-copy-wrap {
+            background: rgba(15,23,42,0.9);
+            border: 1px solid rgba(148,163,184,0.45);
+            border-radius: 20px;
+            padding: 18px 18px 16px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+        }
+        .hero-copy h1 { font-size: 2rem; line-height: 1.1; margin: 10px 0; }
+        .hero-copy h1 span { color: var(--accent-gold); text-shadow: 0 0 18px rgba(250, 204, 21, 0.45); }
+        .hero-copy p { color: var(--secondary-text); max-width: 520px; margin-bottom: 14px; }
+        .chip {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 8px 12px; border-radius: 999px; border: 1px solid rgba(148,163,184,0.4);
+            font-size: 0.82rem; color: var(--secondary-text); background: rgba(15,23,42,0.7);
+        }
+        .hero-actions { display: flex; gap: 10px; margin: 12px 0 8px; flex-wrap: wrap; }
+        .hero-highlights { list-style: none; display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; padding: 0; }
+        .hero-highlights li {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 0.88rem; color: var(--secondary-text);
+            padding: 6px 10px; border: 1px solid rgba(148,163,184,0.3);
+            border-radius: 12px; background: rgba(15,23,42,0.6);
+        }
+        .hero-card { position: relative; }
+        .mini-map-glow {
+            position: absolute; inset: -16px;
+            background: radial-gradient(circle at 30% 30%, rgba(250,204,21,0.15), transparent 50%);
+            filter: blur(18px); z-index: 0;
+        }
+        .hero-card-body {
+            position: relative; z-index: 1;
+            background: rgba(15,23,42,0.9);
+            border: 1px solid rgba(148,163,184,0.4);
+            border-radius: 22px; padding: 18px 16px;
+            box-shadow: 0 24px 60px rgba(0,0,0,0.65);
+        }
+        .hero-card-title { font-weight: 700; margin-bottom: 10px; letter-spacing: 0.02em; }
+        .hero-card-line {
+            display: flex; gap: 10px; align-items: baseline;
+            padding: 8px 10px; border-radius: 12px;
+            background: rgba(255,255,255,0.02); border: 1px solid rgba(148,163,184,0.2); margin-top: 6px;
+        }
+        .hero-card-line span { font-family: 'Space Grotesk', sans-serif; color: var(--accent-gold); min-width: 48px; }
+        .hero-card-footer { margin-top: 10px; font-size: 0.88rem; color: var(--secondary-text); }
+        @media (max-width: 900px) {
+            .hero-split { grid-template-columns: 1fr; }
+            .hero-card { order: -1; }
+        }
+        @media (max-width: 640px) {
+            .home-hero { padding: 28px 14px 24px; }
+            .hero-copy-wrap { padding: 16px 14px; }
+            .hero-copy { text-align: center; align-items: center; }
+            .hero-copy h1 { font-size: 1.5rem; text-align: center; }
+            .hero-copy p { text-align: center; margin-left: auto; margin-right: auto; }
+            .hero-actions { justify-content: center; }
+            .hero-highlights { justify-content: center; }
+            .hero-card-body { padding: 14px 12px; }
+        }
+        
+        .date-input,
+        .text-input {
+            background: rgba(15, 23, 42, 0.98);
+            border: 1px solid rgba(148, 163, 184, 0.55); 
+            color: var(--primary-text);
+            padding: 11px 12px;
+            border-radius: 12px;
+            width: 100%;
+            font-size: 0.9rem;
+            text-align: left;
+            margin-bottom: 8px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        .input-with-toggle {
+            position: relative;
+        }
+        .toggle-visibility {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--muted-text);
+            cursor: pointer;
+            padding: 4px;
+            font-size: 0.9rem;
+        }
+        .date-input {
+            text-align: center;
+        }
+        .date-input::placeholder,
+        .text-input::placeholder { color: var(--muted-text); }
+
+        .text-input:focus,
+        .date-input:focus {
+            outline: none;
+            border-color: var(--accent-gold);
+            box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.5);
+            background: rgba(15,23,42,1);
+        }
+
+        .input-error {
+            border-color: var(--danger) !important;
+        }
+        .error-text {
+            color: var(--danger);
+            font-size: 0.75rem;
+            min-height: 14px;
+            text-align: left;
+            margin-bottom: 4px;
+        }
+
+        .form-group {
+            width: 100%;
+            margin-bottom: 4px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* AUTH TOGGLE */
+        .auth-toggle {
+            display: flex;
+            gap: 6px;
+            background: rgba(15,23,42,0.96);
+            border-radius: 999px;
+            border: 1px solid rgba(148,163,184,0.6);
+            padding: 2px;
+            margin-bottom: 14px;
+        }
+        .auth-toggle-btn {
+            flex: 1;
+            border-radius: 999px;
+            border: none;
+            background: transparent;
+            color: var(--secondary-text);
+            font-size: 0.8rem;
+            padding: 5px 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .auth-toggle-btn i {
+            font-size: 0.8rem;
+        }
+        .auth-toggle-btn.active {
+            background: radial-gradient(circle at top left, #FEF9C3, #FACC15);
+            color: #030712;
+            box-shadow: 0 8px 22px rgba(250,204,21,0.75);
+        }
+
+        /* PROFILE SECTION */
+        .profile-shell {
+            width: 100%;
+            max-width: 460px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .profile-shell-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 10px;
+            padding: 0 2px;
+        }
+        .profile-shell-title-block {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .profile-shell-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+        }
+        .profile-shell-subtitle {
+            font-size: 0.85rem;
+            color: var(--secondary-text);
+        }
+        .profile-shell-badge {
+            padding: 5px 9px;
+            border-radius: 999px;
+            border: 1px solid rgba(148,163,184,0.6);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.16em;
+            color: var(--muted-text);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        .profile-shell-badge i {
+            font-size: 0.7rem;
+            color: var(--accent-gold);
+        }
+
+        .profile-layout {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .profile-card {
+            background: radial-gradient(circle at top left, rgba(250, 204, 21, 0.12), transparent 60%),
+                        rgba(15, 23, 42, 0.98);
+            border-radius: 22px;
+            padding: 18px 18px 16px;
+            border: 1px solid rgba(148, 163, 184, 0.6);
+            box-shadow: 0 26px 60px rgba(15, 23, 42, 0.85);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .profile-card-secondary {
+            background: rgba(15, 23, 42, 0.96);
+            border-radius: 20px;
+            padding: 16px 18px 14px;
+            border: 1px solid rgba(31, 41, 55, 0.9);
+            box-shadow: 0 18px 45px rgba(15, 23, 42, 0.8);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .small-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.18em;
+            color: var(--muted-text);
+        }
+
+        .profile-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .profile-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 999px;
+            background: radial-gradient(circle at top left, #FEF9C3, #EAB308 65%, #854D0E 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 1.05rem;
+            color: #111827;
+            box-shadow: 0 0 0 2px rgba(15,23,42,1), 0 10px 30px rgba(250, 204, 21, 0.6);
+        }
+        .profile-main-name {
+            font-weight: 700;
+            font-size: 1rem;
+            text-transform: lowercase;
+        }
+        .profile-main-name::first-letter {
+            text-transform: uppercase;
+        }
+        .profile-email {
+            font-size: 0.86rem;
+            color: var(--secondary-text);
+        }
+
+        .profile-divider {
+            border-top: 1px dashed rgba(55, 65, 81, 0.9);
+            margin: 2px 0;
+        }
+
+        .profile-meta {
+            font-size: 0.86rem;
+            color: var(--secondary-text);
+            line-height: 1.35;
+        }
+
+        .profile-actions {
+            margin-top: 2px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .profile-actions-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .profile-actions-row .btn,
+        .profile-actions-row .btn-secondary {
+            flex: 1 1 48%;
+        }
+
+        .profile-card-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 2px;
+            font-size: 0.75rem;
+            color: var(--muted-text);
+        }
+
+        .profile-status-pill {
+            padding: 3px 7px;
+            border-radius: 999px;
+            background: rgba(22, 163, 74, 0.12);
+            border: 1px solid rgba(22, 163, 74, 0.45);
+            color: #BBF7D0;
+            font-size: 0.74rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .profile-status-pill i {
+            font-size: 0.7rem;
+        }
+
+        .profile-trips-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .profile-trips-title {
+            font-size: 0.92rem;
+            font-weight: 600;
+        }
+        .profile-trips-info {
+            font-size: 0.8rem;
+            color: var(--secondary-text);
+            margin-top: 3px;
+        }
+
+        .profile-trips-scroll {
+            margin-top: 4px;
+            max-height: 210px;
+            overflow-y: auto;
+            padding-right: 2px;
+        }
+
+        .profile-trip-card {
+            background: rgba(15, 23, 42, 0.98);
+            border-radius: 12px;
+            border: 1px solid rgba(55, 65, 81, 0.9);
+            padding: 8px 10px 8px;
+            margin-top: 7px;
+            font-size: 0.84rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            cursor: default;
+            transition: border-color 0.18s, background 0.18s, transform 0.18s, box-shadow 0.18s;
+        }
+        .profile-trip-card:hover {
+            border-color: rgba(250, 204, 21, 0.85);
+            background: rgba(15, 23, 42, 1);
+            transform: translateY(-1px);
+            box-shadow: 0 12px 35px rgba(15, 23, 42, 0.95);
+        }
+        .profile-trip-title {
+            font-weight: 600;
+            color: #FDE68A;
+        }
+        .profile-trip-meta {
+            color: var(--secondary-text);
+            font-size: 0.78rem;
+        }
+
+        .profile-empty-state {
+            margin-top: 10px;
+            font-size: 0.8rem;
+            color: var(--muted-text);
+            padding: 9px 10px;
+            border-radius: 11px;
+            border: 1px dashed rgba(75,85,99,0.9);
+            background: rgba(15,23,42,0.85);
+        }
+        .dna-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+        .dna-stat {
+            background: rgba(15,23,42,0.9);
+            border: 1px solid rgba(55,65,81,0.8);
+            border-radius: 12px;
+            padding: 10px 12px;
+        }
+        .dna-stat-header { display:flex; justify-content: space-between; align-items:center; font-size:0.88rem; color: var(--primary-text); }
+        .dna-bar {
+            position: relative;
+            height: 8px;
+            border-radius: 999px;
+            background: rgba(55,65,81,0.8);
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        .dna-bar-fill {
+            position:absolute;
+            top:0; left:0;
+            height:100%;
+            border-radius: 999px;
+            background: linear-gradient(90deg, var(--accent-gold), var(--accent-cyan));
+        }
+        .badge-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+        .badge-pill {
+            padding:6px 10px;
+            border-radius:999px;
+            border:1px solid rgba(148,163,184,0.4);
+            color: var(--primary-text);
+            font-size:0.78rem;
+            display:inline-flex;
+            align-items:center;
+            gap:6px;
+            background: rgba(15,23,42,0.9);
+        }
+        .badge-pill.locked { opacity: 0.4; }
+        .saved-places {
+            display:flex; flex-direction:column; gap:8px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .saved-place {
+            padding:8px 10px;
+            border-radius:10px;
+            border:1px solid rgba(55,65,81,0.9);
+            background: rgba(15,23,42,0.92);
+            display:flex;
+            justify-content: space-between;
+            align-items: center;
+            gap:10px;
+            font-size:0.86rem;
+        }
+        .saved-place span { color: var(--secondary-text); font-size:0.8rem; }
+        .fav-empty { font-size:0.82rem; color: var(--muted-text); }
+        .edit-profile {
+            display:flex; flex-direction:column; gap:8px; margin-top:8px;
+        }
+        .edit-profile input[type="color"] {
+            width:100%; height:36px; border-radius:10px; border:1px solid rgba(55,65,81,0.8); background: transparent;
+        }
+
+        /* TOAST */
+        #toast {
+            position: fixed;
+            bottom: 16px;
+            right: 16px;
+            min-width: 240px;
+            max-width: 320px;
+            background: var(--card-surface);
+            border: 1px solid rgba(148,163,184,0.5);
+            color: var(--primary-text);
+            padding: 12px 14px;
+            border-radius: 12px;
+            box-shadow: 0 14px 40px rgba(0,0,0,0.55);
+            transform: translateY(140%);
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.25s ease;
+            z-index: 1001;
+        }
+        #toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        #toast.success { border-color: rgba(16,185,129,0.7); color: #BBF7D0; }
+        #toast.error { border-color: rgba(249,115,115,0.7); color: #FCA5A5; }
+
+        /* ASSISTANT DRAWER & CHAT */
+        .assistant-drawer {
+            position: fixed;
+            left: 0; right: 0; bottom: 0;
+            height: 28vh;
+            background: rgba(12, 18, 32, 0.95);
+            backdrop-filter: blur(18px);
+            border-top: 1px solid rgba(103,232,249,0.55);
+            box-shadow: 0 -12px 28px rgba(0,0,0,0.45);
+            border-radius: 12px 12px 0 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 10px 12px 12px;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            z-index: 180;
+        }
+        .assistant-drawer.collapsed { transform: translateY(calc(100% - 46px)); opacity: 0.85; }
+        .assistant-drawer.open { transform: translateY(0); opacity: 1; }
+        .assistant-drawer-header { display:flex; justify-content: space-between; align-items: center; font-weight:700; color: var(--primary-text); padding: 6px 4px 0; }
+        .assistant-drawer-content { flex:1; overflow-y:auto; color: var(--primary-text); font-size:0.9rem; line-height:1.4; padding: 4px 2px; }
+        .assistant-close { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.2); color: var(--primary-text); padding: 4px 10px; border-radius: 10px; cursor: pointer; }
+        .chat-fab {
+            position: fixed;
+            right: 14px; bottom: 18px;
+            width: 48px; height: 48px;
+            border-radius: 50%;
+            border: none;
+            background: radial-gradient(circle at top left, #FEF9C3, #FACC15);
+            color: #0B1020;
+            box-shadow: 0 12px 28px rgba(0,0,0,0.35);
+            cursor: pointer;
+            z-index: 200;
+            display: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.15rem;
+        }
+        .chat-modal {
+            position: fixed;
+            right: 14px; bottom: 74px;
+            width: 280px;
+            max-height: 360px;
+            background: radial-gradient(circle at 20% 20%, rgba(103,232,249,0.08), transparent 40%), rgba(12,18,32,0.96);
+            border: 1px solid rgba(103,232,249,0.35);
+            border-radius: 14px;
+            box-shadow: 0 16px 40px rgba(0,0,0,0.55);
+            display: none;
+            flex-direction: column;
+            z-index: 210;
+        }
+        .chat-modal.expanded { 
+            width: 400px; 
+            max-width: 90vw; 
+            height: 80vh; 
+            max-height: 80vh; 
+            right: 18px; 
+            bottom: 84px; 
+        }
+        .chat-modal.open { display: flex; }
+        .chat-modal-header, .chat-modal-footer { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .chat-modal-footer { border-bottom: none; border-top: 1px solid rgba(255,255,255,0.08); display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 8px; background: rgba(255,255,255,0.02); border-radius: 0 0 14px 14px; }
+        .chat-modal-body { padding: 10px 12px; flex: 1; min-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+        .chat-bubble { padding: 8px 10px; border-radius: 12px; font-size: 0.9rem; line-height: 1.4; max-width: 88%; }
+        .chat-bubble.me { margin-left: auto; background: rgba(250,204,21,0.15); border: 1px solid rgba(250,204,21,0.45); color: var(--primary-text); }
+        .chat-bubble.ai { margin-right: auto; background: rgba(255,255,255,0.06); border: 1px solid rgba(148,163,184,0.25); color: var(--primary-text); }
+        .chat-bubble, .bubble-text { user-select: text !important; }
+        .chat-input { flex: 1; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(148,163,184,0.35); background: rgba(15,23,42,0.92); color: var(--primary-text); outline: none; width: 100%; }
+        .chat-send { border: none; padding: 8px 10px; border-radius: 10px; background: linear-gradient(135deg, #FEF9C3, #FACC15); color: #0B1020; font-weight: 700; cursor: pointer; }
+        .chat-action {
+            border: 1px solid rgba(148,163,184,0.35);
+            background: rgba(255,255,255,0.06);
+            color: var(--primary-text);
+            border-radius: 10px;
+            padding: 8px 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+        .checkin-btn {
+            border: none;
+            background: rgba(255,255,255,0.14);
+            color: var(--secondary-text);
+            border-radius: 50%;
+            width: 32px; height: 32px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 8px 18px rgba(0,0,0,0.25);
+            transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease, background 0.2s ease, color 0.2s ease;
+        }
+        .checkin-btn.active { background: linear-gradient(135deg, var(--accent-gold), #FDE68A); color: #0B1020; filter: saturate(1.1); box-shadow: 0 10px 22px rgba(250,204,21,0.35); }
+        .complete-btn {
+            border: none;
+            background: rgba(255,255,255,0.14);
+            color: var(--secondary-text);
+            border-radius: 50%;
+            width: 32px; height: 32px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 8px 18px rgba(0,0,0,0.22);
+            transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease, background 0.2s ease, color 0.2s ease;
+        }
+        .complete-btn.active { background: linear-gradient(135deg, var(--accent-cyan), #67E8F9); color: #0B1020; filter: saturate(1.1); box-shadow: 0 10px 22px rgba(103,232,249,0.35); }
+        .activity-time-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 140px;
+            justify-content: center;
+        }
+
+        /* SETTINGS */
+        .settings-card {
+            background: rgba(15,23,42,0.96);
+            border-radius: 20px;
+            padding: 16px 18px 14px;
+            border: 1px solid rgba(31,41,55,0.9);
+            box-shadow: 0 18px 45px rgba(15,23,42,0.8);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* EVALUATION, SWIPE, RESULTS */
+        .evaluation-content {
+            width: 100%;
+            background: var(--card-surface);
+            padding: 20px 18px 18px;
+            border-radius: 22px;
+            box-shadow: var(--box-glow);
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .ruler-group { margin-bottom: 22px; width: 100%; }
+        .ruler-label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .ruler-label h4 { font-size: 1rem; font-weight: 700; }
+        .ruler-label span { color: var(--accent-gold); font-weight: 600; font-size: 0.86rem; }
+
+        .ruler-track {
+            position: relative; height: 8px; width: 100%; background: var(--ruler-track); border-radius: 4px; margin: 12px 0;
+        }
+        .ruler-fill {
+            position: absolute; height: 100%; width: 50%; background: linear-gradient(to right, #FACC15, #FDE68A); border-radius: 4px;
+        }
+        .ruler-knob {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 22px; height: 22px;
+            background: var(--primary-text); border: 4px solid var(--accent-gold); border-radius: 50%; cursor: grab;
+            box-shadow: 0 0 10px rgba(250, 204, 21, 0.6); transition: border-color 0.1s; z-index: 5;
+        }
+        .ruler-knob:active { cursor: grabbing; }
+
+        .ruler-range-labels {
+            display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--secondary-text);
+        }
+
+        .tour-guide-toggle {
+            display: flex; justify-content: space-between; align-items: center; background: rgba(250, 204, 21, 0.06);
+            padding: 13px; border-radius: 12px; margin-top: 10px; margin-bottom: 18px; border: 1px solid rgba(250, 204, 21, 0.4);
+            transition: background 0.3s;
+        }
+
+        .card-stack { width: 100%; max-width: 520px; height: 430px; margin: 0 auto 10px; position: relative; } 
+
+        .card-stack::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 24px;
+            background: rgba(5, 8, 22, 0.96);
+            z-index: 0;
+        }
+
+        .card {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(5, 8, 22, 0.96);
+            border-radius: 22px; overflow: hidden; box-shadow: var(--box-glow); cursor: grab;
+            display: flex; flex-direction: column; will-change: transform;
+        }
+        .card img { width: 100%; height: 75%; object-fit: cover; pointer-events: none; background: #050816; }
+        
+        .price-badge {
+            position: absolute; top: 16px; right: 16px; background: rgba(15,23,42,0.95); backdrop-filter: blur(5px);
+            padding: 4px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; color: #fff;
+            border: 1px solid var(--accent-gold); display: flex; gap: 2px; z-index: 5; 
+        }
+        .dollar-luxury { color: #FDE68A; } 
+        .dollar-active { color: var(--success); }
+        .dollar-inactive { color: rgba(255,255,255,0.3); }
+
+        .card-info { height: 25%; padding: 16px 18px; background: var(--card-surface); }
+        .card-tag { color: var(--accent-gold); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; }
+        .card-title { font-size: 1.4rem; font-weight: 700; margin-top: 2px; }
+
+        .card-status {
+            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%) rotate(-15deg);
+            padding: 8px 16px; border: 4px solid; border-radius: 12px;
+            font-size: 1.6rem; font-weight: 800; text-transform: uppercase; opacity: 0; z-index: 10;
+        }
+        .status-like { color: var(--success); border-color: var(--success); transform: translate(-50%, -50%) rotate(15deg); }
+        .status-nope { color: var(--danger); border-color: var(--danger); }
+        
+        .loader { width: 36px; height: 36px; border: 3px solid rgba(148,163,184,0.3); border-top-color: var(--accent-gold); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 18px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .results-container {
+            position: relative;
+            border-radius: 22px;
+            width: 100%;
+            max-height: 85vh; 
+            overflow: hidden; 
+            border: 1px solid rgba(148,163,184,0.45);
+            box-shadow: 0 0 40px rgba(0,0,0,0.85);
+            display: flex; flex-direction: column;
+            background: linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(15,23,42,0.92) 100%);
+        }
+        .results-container::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: url('https://images.unsplash.com/photo-1484249170766-998fa6efe3c0?auto=format&fit=crop&w=1600&q=80');
+            background-size: cover;
+            background-position: center;
+            opacity: 0.12;
+            filter: saturate(120%);
+            z-index: 0;
+        }
+        .results-container > * { position: relative; z-index: 1; }
+
+        .results-map-header {
+            position: relative;
+            height: 110px;
+            overflow: hidden;
+            border-radius: 22px 22px 0 0;
+            border-bottom: 1px dashed rgba(148, 163, 184, 0.32);
+        }
+        .btn-small {
+            padding: 10px 14px;
+            font-size: 0.88rem;
+        }
+
+        .blueprint-map {
+            width: 100%;
+            height: 100%;
+            background-image: url('https://i.imgur.com/KzDq6zN.png');
+            background-size: cover;
+            background-position: center;
+            opacity: 0.6;
+            filter: grayscale(100%) brightness(0.2) contrast(1.5) sepia(100%) hue-rotate(180deg) saturate(300%);
+        }
+        .map-overlay-title {
+            position: absolute;
+            top: 14px; left: 14px; right: 14px;
+            background: rgba(15, 23, 42, 0.96);
+            backdrop-filter: blur(7px);
+            padding: 7px 12px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 0.98rem;
+            border: 1px solid rgba(96,165,250,0.8);
+            color: var(--blueprint-blue);
+            text-align: center;
+        }
+        
+        .results-scroll-content {
+            padding: 18px 16px 0 16px;
+            overflow-y: auto; 
+            flex-grow: 1;
+        }
+
+        .itinerary-day {
+            background: var(--primary-bg);
+            border-radius: 14px;
+            margin-bottom: 14px;
+            overflow: hidden;
+            border: 1px solid rgba(31,41,55,0.9);
+        }
+        .day-header {
+            padding: 11px 14px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(30, 64, 175, 0.18);
+            border-bottom: 2px solid var(--accent-gold);
+            transition: background 0.2s;
+        }
+        .day-header:hover { background: rgba(30, 64, 175, 0.26); }
+        
+        .day-header-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .day-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--accent-gold);
+        }
+        .day-meta {
+            font-size: 0.83rem;
+            color: var(--secondary-text);
+            margin-top: 2px;
+        }
+        .weather-info {
+            font-size: 1.2rem;
+            color: var(--blueprint-blue);
+        }
+        
+        .day-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.35s ease-out;
+            padding: 0 14px;
+        }
+        .day-content.active {
+            max-height: 900px;
+            padding: 12px 14px 13px 14px;
+        }
+
+        .activity-item {
+            position: relative;
+            padding: 12px 14px 12px 20px;
+            border-left: 2px solid rgba(75, 85, 99, 0.85);
+            cursor: pointer;
+            transition: background 0.12s;
+        }
+        .activity-item:last-child {
+            border-left: none;
+        }
+        .activity-item:hover {
+            background: rgba(15, 23, 42, 0.9);
+        }
+        
+        .activity-item::before {
+            content: '';
+            position: absolute;
+            left: -1px;
+            top: 16px;
+            width: 8px;
+            height: 8px;
+            background: var(--accent-gold);
+            border-radius: 50%;
+            transform: translateX(-50%);
+            z-index: 1;
+        }
+
+        .activity-content-wrapper {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .activity-time {
+            background: var(--accent-gold);
+            color: #111827;
+            padding: 3px 7px;
+            border-radius: 5px;
+            font-weight: 700;
+            font-size: 0.78rem;
+            line-height: 1;
+            margin-left: 8px;
+            flex-shrink: 0;
+            align-self: flex-start;
+        }
+        
+        .activity-title {
+            font-weight: 600;
+            font-size: 0.98rem;
+            line-height: 1.3;
+        }
+        .activity-duration {
+            font-size: 0.8rem;
+            color: var(--secondary-text);
+            margin-top: 3px;
+        }
+
+        .activity-details {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.28s ease-in-out;
+            background: rgba(17, 24, 39, 0.94);
+            backdrop-filter: blur(4px);
+            border-radius: 9px;
+            margin-top: 8px;
+            padding: 0 11px;
+            border: 1px solid rgba(55, 65, 81, 0.95);
+        }
+        .activity-details.open {
+            max-height: 420px; 
+            padding: 11px;
+        }
+        
+        .details-info-box h5 {
+            color: var(--accent-gold);
+            font-size: 0.94rem;
+            margin-bottom: 5px;
+            padding-top: 3px;
+        }
+        .details-info-box p, .details-info-box ul {
+            font-size: 0.84rem;
+            color: var(--primary-text);
+            margin-bottom: 10px;
+        }
+        .details-info-box ul {
+            padding-left: 18px;
+        }
+
+        .details-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 6px;
+            flex-wrap: wrap;
+        }
+        .action-btn {
+            display: inline-flex; align-items: center; gap: 7px;
+            padding: 8px 13px; border-radius: 9px;
+            font-size: 0.82rem; font-weight: 600; text-decoration: none;
+            transition: background 0.16s; border: 1px solid; cursor: pointer;
+            background: transparent !important;
+        }
+        .btn-maps { color: var(--blueprint-blue); border-color: var(--blueprint-blue); }
+        .btn-booking { color: var(--success); border-color: var(--success); }
+        .action-btn:hover { background: rgba(255, 255, 255, 0.05) !important; }
+
+        .insta-tip {
+            border-top: 1px dashed rgba(75, 85, 99, 0.9);
+            padding-top: 8px;
+            margin-top: 6px;
+            font-style: italic;
+            color: var(--secondary-text);
+            font-size: 0.78rem;
+        }
+        .insta-tip strong { color: var(--accent-gold); }
+        
+        .map-pin {
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--accent-gold);
+            border: 3px solid var(--primary-bg);
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+            transform: translate(-50%, -100%);
+            cursor: pointer;
+            transition: transform 0.18s, background 0.18s;
+            z-index: 50;
+            animation: popIn 0.3s ease forwards;
+        }
+        .map-pin:hover {
+            background: var(--success);
+            transform: translate(-50%, -100%) scale(1.25);
+        }
+        .map-pin::before {
+            content: attr(data-index);
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 0.68rem;
+            font-weight: 800;
+            color: var(--primary-bg);
+        }
+        .pin-tooltip {
+            position: absolute;
+            bottom: 22px; 
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--primary-bg);
+            color: var(--primary-text);
+            padding: 4px 8px;
+            border-radius: 5px;
+            white-space: nowrap;
+            font-size: 0.78rem;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.16s;
+        }
+        .map-pin:hover .pin-tooltip {
+            opacity: 1;
+        }
+        @keyframes popIn {
+            from { transform: translate(-50%, -120%) scale(0.7); opacity: 0; }
+            to { transform: translate(-50%, -100%) scale(1); opacity: 1; }
+        }
+        /* Leaflet adjustments */
+        .leaflet-container {
+            background: #0f172a;
+        }
+        #dayMapContainer {
+            filter: none !important;
+            background: #0f172a;
+        }
+        #dayMapContainer .leaflet-tile {
+            filter: none !important;
+            opacity: 1 !important;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 52px;
+            height: 28px;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #4B5563;
+            transition: .3s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: var(--accent-gold);
+        }
+        input:checked + .slider:before {
+            transform: translateX(24px);
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="header-left">
+        <div class="logo" onclick="openHome()">Chicago<span>AI</span> Planner</div>
+    </div>
+    <div class="header-right">
+        <div class="tab-nav">
+            <button class="tab-btn active" id="tab-plan" onclick="openPlannerTab()">
+                <i class="fa-solid fa-map"></i> Plan
+            </button>
+            <button class="tab-btn" id="tab-profile" onclick="openProfileTab()">
+                <i class="fa-regular fa-user"></i> Profile
+            </button>
+        </div>
+
+        <div class="profile-menu" id="profileMenu">
+            <button class="profile-menu-trigger" onclick="toggleProfileDropdown(event)">
+                <span class="profile-menu-avatar" id="headerAvatar">U</span>
+                <i class="fa-solid fa-chevron-down"></i>
+            </button>
+            <div class="profile-menu-dropdown" id="profileDropdown">
+                <button class="dropdown-item" onclick="openPastTripsFromMenu()">
+                    <i class="fa-solid fa-suitcase-rolling"></i><span>Past Trips</span>
+                </button>
+                <button class="dropdown-item" onclick="openSettingsFromMenu()">
+                    <i class="fa-solid fa-gear"></i><span>Settings</span>
+                </button>
+                <div class="dropdown-divider"></div>
+                <button class="dropdown-item logout" onclick="logoutFromMenu()">
+                    <i class="fa-solid fa-arrow-right-from-bracket"></i><span>Log out</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</header>
+
+<main>
+    
+    
+    <!-- HOME -->
+    <section id="home">
+        <div class="home-hero">
+            <div class="hero-split">
+                <div class="hero-copy">
+                    <h1>Unlock the city's best routes,<br><span>your way</span>.</h1>
+                    <p>Instant AI itinerary tuned to your tempo, budget, and interests. Save it, share it, and reuse whenever you want.</p>
+                    <div class="hero-actions">
+                        <button class="btn" onclick="showOnlySection('auth')">Get Started</button>
+                    </div>
+                    <ul class="hero-highlights">
+                        <li><i class="fa-solid fa-bolt"></i> Plan in 30s</li>
+                        <li><i class="fa-solid fa-location-dot"></i> Daily map</li>
+                        <li><i class="fa-solid fa-sparkles"></i> AI tour guide</li>
+                    </ul>
+                </div>
+                <div class="hero-card">
+                    <div class="mini-map-glow"></div>
+                    <div class="hero-card-body">
+                        <div class="hero-card-title">Suggested for today</div>
+                        <div id="suggestedTodayList">
+                            <div class="hero-card-line"><span>--:--</span><strong>Tap refresh to load</strong></div>
+                        </div>
+                        <div class="hero-card-footer" style="font-size:0.88rem; color: var(--secondary-text); display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                            <span id="suggestedTodayMeta">Profile not loaded</span>
+                            <button class="btn-secondary" style="padding:6px 10px; font-size:0.78rem;" onclick="refreshSuggestedToday()">Refresh</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- AUTH (LOGIN + SIGNUP TOGGLE) --><!-- AUTH (LOGIN + SIGNUP TOGGLE) -->
+    <section id="auth">
+        <div class="intro-content pulsing-glow">
+            <i class="fa-solid fa-user-lock ai-chip"></i>
+            <h1 id="authTitle">Welcome back</h1>
+            <p id="authSubtitle" style="color:var(--secondary-text); margin-bottom:14px; font-size:0.86rem;">
+                Log in to access your Chicago AI trips.
+            </p>
+
+            <div class="auth-toggle">
+                <button type="button" class="auth-toggle-btn active" id="btnAuthLogin" onclick="setAuthMode('login')">
+                    <i class="fa-solid fa-right-to-bracket"></i> Log In
+                </button>
+                <button type="button" class="auth-toggle-btn" id="btnAuthSignup" onclick="setAuthMode('signup')">
+                    <i class="fa-solid fa-user-plus"></i> Sign Up
+                </button>
+            </div>
+            
+            <!-- LOGIN FORM -->
+            <form id="loginForm" onsubmit="handleLoginSubmit(event)" style="margin-top:4px;">
+                <div class="form-group">
+                    <input type="email" id="loginEmail" class="text-input" placeholder="Email">
+                    <div class="error-text" id="loginEmailError"></div>
+                </div>
+            <div class="form-group">
+                <div class="input-with-toggle">
+                    <input type="password" id="loginPassword" class="text-input" placeholder="Password">
+                    <button type="button" class="toggle-visibility" data-target="loginPassword"><i class="fa-solid fa-eye"></i></button>
+                </div>
+                <div class="error-text" id="loginPasswordError"></div>
+            </div>
+            <label style="display:flex; align-items:center; gap:6px; font-size:0.82rem; color: var(--secondary-text); margin: 6px 0 2px;">
+                <input type="checkbox" id="rememberMe" style="accent-color: var(--accent-gold); width:14px; height:14px;"> Remember me on this device
+            </label>
+                <div class="error-text" id="loginError"></div>
+
+                <button class="btn" type="submit" style="width:100%; margin-top:8px;">Log In</button>
+            </form>
+
+            <!-- SIGNUP FORM -->
+            <form id="signupForm" onsubmit="handleRegisterSubmit(event)" class="hidden" style="margin-top:4px;">
+                <div class="form-group">
+                    <input type="text" id="firstName" class="text-input" placeholder="First name">
+                    <div class="error-text" id="firstNameError"></div>
+                </div>
+                <div class="form-group">
+                    <input type="text" id="lastName" class="text-input" placeholder="Last name">
+                    <div class="error-text" id="lastNameError"></div>
+                </div>
+                <div class="form-group">
+                    <input type="email" id="email" class="text-input" placeholder="Email">
+                    <div class="error-text" id="emailError"></div>
+                </div>
+                <div class="form-group">
+                    <div class="input-with-toggle">
+                        <input type="password" id="password" class="text-input" placeholder="Password (min 6 chars)">
+                        <button type="button" class="toggle-visibility" data-target="password"><i class="fa-solid fa-eye"></i></button>
+                    </div>
+                    <div class="error-text" id="passwordError"></div>
+                </div>
+                <div class="form-group">
+                    <div class="input-with-toggle">
+                        <input type="password" id="passwordConfirm" class="text-input" placeholder="Repeat password">
+                        <button type="button" class="toggle-visibility" data-target="passwordConfirm"><i class="fa-solid fa-eye"></i></button>
+                    </div>
+                    <div class="error-text" id="passwordConfirmError"></div>
+                </div>
+
+                <label class="tour-guide-toggle" style="margin: 10px 0 6px; align-items: center; gap: 10px;">
+                    <div style="flex:1;">
+                        <strong style="font-size:0.9rem;">AI Tour Guide</strong>
+                        <div style="font-size:0.8rem; color:var(--secondary-text);">Let the assistant time and sequence your days.</div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="signupTourGuide">
+                        <span class="slider"></span>
+                    </label>
+                </label>
+                <div id="signupTourGuideNote" style="display:none; color: var(--secondary-text); font-size:0.8rem; margin-bottom:6px;">
+                    You can change this preference anytime in Profile settings.
+                </div>
+
+                <button class="btn" type="submit" style="width:100%; margin-top:8px;">Create Account</button>
+            </form>
+        </div>
+    </section>
+
+    <!-- PROFILE -->
+    <section id="profile">
+        <div class="scrollable">
+            <div class="profile-shell">
+                <div class="profile-shell-header">
+                    <div class="profile-shell-title-block">
+                        <div class="profile-shell-title">Account overview</div>
+                        <div class="profile-shell-subtitle">
+                            Manage your profile details and preferences.
+                        </div>
+                    </div>
+                    <div class="profile-shell-badge">
+                        <i class="fa-solid fa-shield-halved"></i>
+                        PROFILE
+                    </div>
+                </div>
+
+                <div class="profile-layout">
+                    <!-- ACCOUNT CARD -->
+                    <div class="profile-card pulsing-glow">
+                        <div class="small-label">Profile</div>
+
+                        <div class="profile-header">
+                            <div class="profile-avatar" id="profileAvatar">U</div>
+                            <div>
+                                <div class="profile-main-name" id="profileName">User</div>
+                                <div class="profile-email" id="profileEmail">user@example.com</div>
+                            </div>
+                        </div>
+
+                        <div class="profile-divider"></div>
+
+                        <div class="profile-meta" id="profileMeta">
+                            Account ready. Create a plan or review saved trips.
+                        </div>
+
+                        <div class="profile-actions">
+                            <div class="profile-actions-row">
+                                <button class="btn" onclick="openPlanner()">
+                                    <i class="fa-solid fa-map-location-dot"></i>&nbsp; Open Trip Planner
+                                </button>
+                                <button class="btn-secondary btn" onclick="logout()">
+                                    <i class="fa-solid fa-arrow-right-from-bracket"></i>&nbsp; Log out
+                                </button>
+                            </div>
+                            <div class="profile-actions-row">
+                                <button class="btn-secondary btn" onclick="openPastTripsTab()">
+                                    <i class="fa-solid fa-suitcase-rolling"></i>&nbsp; View Past Trips
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="profile-card-footer">
+                            <span>Chicago AI Planner</span>
+                            <span class="profile-status-pill">
+                                <i class="fa-solid fa-circle-check"></i>
+                                Signed in
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- TRAVEL DNA & BADGES -->
+                    <div class="profile-card-secondary">
+                        <div class="small-label">Travel DNA</div>
+                        <div class="profile-trips-title">Your style snapshot</div>
+                        <div class="dna-grid" id="dnaStats"></div>
+                        <div class="small-label" style="margin-top:6px;">Badges</div>
+                        <div class="badge-row" id="badgeRow"></div>
+                        <div class="small-label" style="margin-top:10px;">Saved places</div>
+                        <div class="saved-places" id="savedPlaces"></div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- PAST TRIPS -->
+    <section id="pastTrips">
+        <div class="scrollable">
+            <div class="profile-shell">
+                <div class="profile-shell-header">
+                    <div class="profile-shell-title-block">
+                        <div class="profile-shell-title">Past trips</div>
+                        <div class="profile-shell-subtitle">
+                            Review itineraries you saved from this browser.
+                        </div>
+                    </div>
+                    <div class="profile-shell-badge">
+                        <i class="fa-solid fa-suitcase-rolling"></i>
+                        PAST TRIPS
+                    </div>
+                </div>
+
+            <div class="profile-layout">
+                <div class="profile-card-secondary" style="flex:1;">
+                    <div class="profile-trips-header">
+                        <div>
+                            <div class="small-label">Previous trips</div>
+                            <div class="profile-trips-title">Saved itineraries</div>
+                            <div class="profile-trips-info" id="profileTripsInfo">
+                                No completed trips yet.
+                            </div>
+                        </div>
+                        <button class="btn-secondary btn" onclick="openProfileTab()">
+                            <i class="fa-solid fa-arrow-left"></i>&nbsp; Back to Profile
+                        </button>
+                    </div>
+
+                    <div class="profile-trips-scroll">
+                        <div id="previousTripsContainer"></div>
+                        <div id="profileTripsEmptyState" class="profile-empty-state">
+                            When you generate a plan and press
+                            <strong>"Complete &amp; Save Trip"</strong>,
+                            it will appear here.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="settings">
+        <div class="scrollable">
+            <div class="profile-shell">
+                <div class="profile-shell-header">
+                    <div class="profile-shell-title-block">
+                        <div class="profile-shell-title">Settings</div>
+                        <div class="profile-shell-subtitle">
+                            Manage basic preferences for this browser.
+                        </div>
+                    </div>
+                    <div class="profile-shell-badge">
+                        <i class="fa-solid fa-gear"></i>
+                        SETTINGS
+                    </div>
+                </div>
+
+            <div class="profile-layout">
+                <div class="settings-card">
+                    <div class="small-label">Data & Privacy</div>
+                    <div style="font-size:0.86rem; color:var(--secondary-text); margin-bottom:8px;">
+                        This planner stores your profile and trips only in this browser's local storage.
+                    </div>
+
+                    <button class="btn" style="width:100%; margin-top:4px;" onclick="resetAllData()">
+                        <i class="fa-solid fa-broom"></i>&nbsp; Reset All Local Data
+                    </button>
+                    <p style="font-size:0.75rem; color:var(--muted-text); margin-top:6px;">
+                        This will remove your saved user, preferences, itineraries, and trips from this browser.
+                    </p>
+
+                    <div class="profile-divider"></div>
+
+                    <div class="small-label">AI Tour Guide</div>
+                    <label class="tour-guide-toggle" style="border-color: rgba(148,163,184,0.2);">
+                        <div>
+                            <strong style="font-size:0.9rem;">Smart guidance</strong>
+                            <div style="font-size:0.8rem; color:var(--secondary-text);">Keep AI timing and sequencing active.</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="settingsTourGuideToggle" onchange="toggleTourGuideFromSettings(this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+
+                    <div class="profile-divider"></div>
+
+                    <div class="small-label">Profile controls</div>
+                    <div class="profile-trips-title" style="margin-bottom:6px;">Edit your details</div>
+                    <div class="edit-profile">
+                        <input type="text" id="editFirstName" class="text-input" placeholder="First name">
+                        <input type="text" id="editLastName" class="text-input" placeholder="Last name">
+                        <input type="email" id="editEmail" class="text-input" placeholder="Email (read-only)" disabled>
+                        <div class="small-label">Avatar color</div>
+                        <input type="color" id="editAvatarColor" value="#EAB308" style="width:100%; height:36px; border-radius:10px; border:1px solid rgba(55,65,81,0.8); background: transparent;">
+                        <div class="small-label" style="margin-top:8px;">Tempo / Price / Transportation</div>
+                        <input type="range" id="editTempo" min="0" max="100">
+                        <input type="range" id="editPrice" min="0" max="100">
+                        <input type="range" id="editTransportation" min="0" max="100">
+                        <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem; color: var(--secondary-text);">
+                            <input type="checkbox" id="editTourGuide" style="accent-color: var(--accent-gold); width:14px; height:14px;"> AI Tour Guide ON
+                        </label>
+                        <div class="profile-actions-row">
+                            <button class="btn-secondary btn" onclick="cancelProfileEdit()">Cancel</button>
+                            <button class="btn" onclick="saveProfileEdit()">Save</button>
+                        </div>
+                    </div>
+
+                    <div class="profile-divider"></div>
+            <div class="small-label">Notifications</div>
+                    <label class="tour-guide-toggle" style="border-color: rgba(148,163,184,0.2);">
+                        <div>
+                            <strong style="font-size:0.9rem;">Weather changes</strong>
+                            <div style="font-size:0.8rem; color:var(--secondary-text);">Get heads up for rain/snow on trip days.</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="toggleWeatherAlerts" onchange="saveSettingsToggle('weatherAlerts', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                    <label class="tour-guide-toggle" style="border-color: rgba(148,163,184,0.2);">
+                        <div>
+                            <strong style="font-size:0.9rem;">Daily reminder</strong>
+                            <div style="font-size:0.8rem; color:var(--secondary-text);">Morning reminder of today-s plan.</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="toggleDailyReminder" onchange="saveSettingsToggle('dailyReminder', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+
+                    <div class="profile-divider"></div>
+                    <div class="small-label">Theme</div>
+                    <select id="themeSelect" class="text-input" style="margin-bottom:4px;" onchange="applyTheme(this.value, true)">
+                        <option value="gold">Golden Luxe (Default)</option>
+                        <option value="liquid">Liquid Glass</option>
+                        <option value="emerald">Deep Emerald</option>
+                        <option value="sunset">Sunset Purple</option>
+                    </select>
+
+                    <button class="btn-secondary btn" style="width:100%; margin-top:10px;" onclick="openProfileTab()">
+                        <i class="fa-solid fa-arrow-left"></i>&nbsp; Back to Profile
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- PLANNER: INTRO (ilk a-ilan - login sonrasi) -->
+    <section id="intro">
+        <div class="intro-content pulsing-glow"> 
+            <i class="fa-solid fa-microchip ai-chip"></i>
+            <h1>Your Personalized<br>Travel Blueprint</h1>
+            <p style="color:var(--secondary-text); margin-bottom:20px; font-size:0.86rem;">
+                Select your travel dates to unlock a curated AI itinerary.
+            </p>
+            
+            <div class="form-group" style="width:100%; margin-bottom:6px;">
+                <select id="citySelector" class="text-input" aria-label="City">
+                    <option value="Chicago">Chicago</option>
+                </select>
+            </div>
+
+            <input type="text" id="dateRange" class="date-input" placeholder="Select Travel Dates">
+            <button class="btn" id="startBtn" onclick="startApp()" disabled>Start a New Plan</button>
+        </div>
+    </section>
+
+    <!-- PLANNER: SWIPE -->
+    <section id="swiper">
+        <div style="margin-bottom:10px; color:var(--secondary-text); font-size:0.82rem;">
+            <i class="fa-solid fa-hand-pointer"></i> Swipe Right = Like (3 items to profile preferences)
+        </div>
+        
+        <div class="card-stack" id="cardStack"></div>
+    </section>
+
+    <!-- PLANNER: EVALUATION -->
+    <section id="evaluation">
+        <div class="evaluation-content">
+            <h3 style="margin-bottom: 16px; font-size:1.05rem;">Refine Your Travel Profile</h3>
+
+            <div class="profile-card-secondary" style="width:100%; gap:10px;">
+                <div class="small-label">Tempo</div>
+                <select id="tempoSelect" class="text-input" onchange="handleProfileSelectChange('tempo', this.value)">
+                    <option value="relax">Relax & Enjoy</option>
+                    <option value="balanced">Balanced</option>
+                    <option value="active">Fast & Active</option>
+                </select>
+
+                <div class="small-label">Budget</div>
+                <select id="budgetSelect" class="text-input" onchange="handleProfileSelectChange('price', this.value)">
+                    <option value="budget">Budget Friendly</option>
+                    <option value="medium">Medium</option>
+                    <option value="luxury">Luxury</option>
+                </select>
+
+                <div class="small-label">Transportation</div>
+                <select id="transportSelect" class="text-input" onchange="handleProfileSelectChange('transportation', this.value)">
+                    <option value="walk">Walk / Bike / Scooter</option>
+                    <option value="rideshare">Uber / Lyft</option>
+                    <option value="private">Luxury / Private</option>
+                </select>
+
+            </div>
+
+            <button class="btn" style="width:100%; margin-top:12px;" onclick="startProcessing()">Generate AI Itinerary</button>
+        </div>
+    </section>
+
+    <!-- PLANNER: PROCESSING -->
+    <section id="processing">
+        <div style="text-align:center">
+            <div class="loader"></div>
+            <h3 style="font-size:1.02rem;">Your Private Assistant Is Working</h3>
+            <div id="aiLog" style="color:var(--accent-gold); font-size:0.86rem; margin-top:8px;">Analyzing 3 data points to craft your ideal experience...</div>
+        </div>
+    </section>
+
+    <!-- PLANNER: RESULTS -->
+    <section id="results">
+        <div class="results-container">
+            
+            <div class="results-map-header">
+                <div class="blueprint-map"></div>
+                <div class="map-overlay-title" style="display:none;"><span id="itineraryMeta"></span></div>
+                <div style="position: absolute; bottom: 10px; left: 10px; right: 10px; z-index: 20; display: flex; justify-content: space-between; align-items: center;">
+                    
+                    <button class="action-btn btn-booking" style="background: rgba(10, 17, 31, 0.86) !important; color: var(--accent-gold); border-color: var(--accent-gold);" id="reviewProfileBtn" onclick="reviewProfile()">
+                        <i class="fa-solid fa-sliders"></i> Refine My Profile
+                    </button>
+
+                    <button class="action-btn btn-maps" style="background: rgba(10, 17, 31, 0.86) !important;" id="viewDayMapBtn" onclick="handleMainMapClick()">
+                        <i class="fa-solid fa-map-location-dot"></i> Day 1 Map (0)
+                    </button>
+
+                </div>
+            </div>
+
+            <div class="results-scroll-content" id="itineraryContent">
+            </div>
+            
+            <div class="results-actions" style="padding:10px 12px 14px; background:rgba(15,23,42,0.92); border-top: 1px solid rgba(55,65,81,0.85); text-align: center; display:grid; gap:8px;">
+                <button class="btn btn-small" id="completeTripBtn" style="width:100%;" onclick="completeCurrentTrip()">
+                    Complete &amp; Save Trip
+                </button>
+                <button class="btn btn-small" style="width:100%;" onclick="copyItinerarySummary()">Share My Plan</button>
+                <button class="btn btn-small" style="width:100%;" onclick="goToPlannerStart()">Start a New Plan</button>
+            </div>
+        </div>
+    </section>
+</main>
+
+<div id="toast"></div>
+
+<!-- ASSISTANT DRAWER & CHAT -->
+<div id="assistantDrawer" class="assistant-drawer collapsed" style="display:none;">
+        <div class="assistant-drawer-header">
+        <span>Assistant</span>
+        <button class="assistant-close" onclick="hideAssistant()">Close</button>
+    </div>
+    <div class="assistant-drawer-content" id="assistantContent">Assistant is standing by.</div>
+</div>
+<button class="chat-fab" id="chatFab" onclick="openChatModal()">
+    <i class="fa-solid fa-message" style="font-size:1.2rem;"></i>
+</button>
+<div class="chat-modal" id="chatModal">
+    <div class="chat-modal-header">
+        <strong>AI Assistant</strong>
+        <div style="display:flex; gap:6px;">
+            <button class="assistant-close" onclick="toggleChatSize()" title="Toggle size"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
+            <button class="assistant-close" onclick="closeChatModal()">Close</button>
+        </div>
+    </div>
+    <div class="chat-modal-body" id="chatMessages"></div>
+    <div class="chat-modal-footer">
+        <input class="chat-input" id="chatInput" placeholder="Ask for tips or tweaks..." onkeydown="handleChatKeydown(event)" />
+        <button class="chat-action" title="Record voice (send to AI later)"><i class="fa-solid fa-microphone"></i></button>
+        <button class="chat-action" title="Attach photo"><i class="fa-solid fa-camera"></i></button>
+        <button class="chat-send" onclick="sendChatMessage()">Send</button>
+    </div>
+</div>
+
+<!-- DAY MAP MODAL -->
+<div id="dayMapModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(3, 7, 18, 0.96); backdrop-filter: blur(16px); z-index: 1000; display: none; justify-content: center; align-items: center; padding: 20px;">
+    <div style="background: var(--card-surface); border-radius: 18px; width: 95%; max-width: 700px; height: 90%; max-height: 800px; display: flex; flex-direction: column; overflow: hidden; position: relative; border:1px solid rgba(55,65,81,0.95);">
+        
+        <div style="padding: 11px 14px; background: rgba(15, 23, 42, 0.98); border-bottom: 1px solid var(--accent-gold); display: flex; justify-content: space-between; align-items: center;">
+            <h3 id="mapModalTitle" style="font-size:1rem;">Day X Map</h3>
+            <button onclick="document.getElementById('dayMapModal').style.display='none';" class="action-btn btn-maps" style="border-color: var(--danger); color: var(--danger);">
+                <i class="fa-solid fa-xmark"></i> Close
+            </button>
+        </div>
+
+        <div id="dayMapContainer" class="blueprint-map" style="flex-grow: 1; position: relative; width: 100%; height: 100%; overflow: hidden;">
+        </div>
+        
+        <div id="mapLegend" style="padding: 8px 14px; background: var(--primary-bg); border-top: 1px solid rgba(55,65,81,0.9); font-size: 0.86rem; color: var(--secondary-text); display: flex; flex-wrap: wrap; gap: 8px;">
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+    /* --------- DATA: 3 TEST EXPERIENCES ---------- */
+    const experiences = [
+        { id: 1, title: "Luxury Helicopter Tour", category: "Adventure", price: 3, img: "https://images.unsplash.com/photo-1540962351504-03099e0a754b?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "luxury", details: "A 30-minute private helicopter ride offering unmatched views of the Magnificent Mile and Lake Michigan.", insta: "Best shot is the tilt-shift view looking straight down at The Loop. Use a wide-angle lens!", time: "10:00", duration: "45 min", lat: 41.8842, lng: -87.6258 },
+        { id: 2, title: "Deep Dish Pizza (Lou Malnati's)", category: "Food", price: 2, img: "https://images.unsplash.com/photo-1619860167683-176375037549?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "food_mid", details: "Experience authentic Chicago-style deep-dish pizza. Recommended: Buttercrust with sausage.", insta: "Get a close-up of the cheese pull before you slice the pie! Make sure the tomato sauce looks vibrant.", time: "12:30", duration: "1 hr 15 min", lat: 41.8938, lng: -87.6276 },
+        { id: 3, title: "Alinea (3-Star Michelin)", category: "Fine Dining", price: 3, img: "https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "luxury_food", details: "World-renowned culinary experience. This is an evening activity requiring formal attire and advance booking.", insta: "Capture the artistic presentation of the floating dessert course. Use soft, directional lighting.", time: "19:00", duration: "3 hr", lat: 41.9161, lng: -87.6483 }
+    ];
+
+    const USER_STORAGE_KEY = 'chicago_ai_user_v1';
+    const STORAGE_KEYS = {
+        profile: 'chicago_ai_profile_v1',
+        itinerary: 'chicago_ai_itinerary_v1',
+        trips: 'chicago_ai_trips_v1',
+        favorites: 'chicago_ai_favorites_v1',
+        settings: 'chicago_ai_settings_v1'
+    };
+
+    const DEFAULT_PROFILE = {
+        startDate: null,
+        endDate: null,
+        likedTags: [],
+        tempo: 50,
+        price: 50,
+        transportation: 50,
+        tourGuide: false,
+        avatarColor: '#EAB308',
+        city: 'Chicago'
+    };
+
+    const CITY_OPTIONS = [
+        { id: 'chicago', label: 'Chicago', region: 'Illinois, USA' }
+    ];
+
+    /* ---------- LOCAL STORAGE HELPERS ---------- */
+    function loadUser() {
+        try {
+            const raw = localStorage.getItem(USER_STORAGE_KEY);
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch (e) { return null; }
+    }
+    function saveUser(user) {
+        try { localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user)); } catch (e) {}
+    }
+
+    function loadProfile() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.profile);
+            if (!raw) return { ...DEFAULT_PROFILE };
+            const saved = JSON.parse(raw);
+            return { ...DEFAULT_PROFILE, ...saved };
+        } catch (e) {
+            return { ...DEFAULT_PROFILE };
+        }
+    }
+    function saveProfile(profile) {
+        try { localStorage.setItem(STORAGE_KEYS.profile, JSON.stringify(profile)); } catch (e) {}
+    }
+    function saveItinerary(itinerary) {
+        try { localStorage.setItem(STORAGE_KEYS.itinerary, JSON.stringify(itinerary)); } catch (e) {}
+    }
+    function loadItinerary() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.itinerary);
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch (e) { return null; }
+    }
+    function loadTrips() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.trips);
+            if (!raw) return [];
+            return JSON.parse(raw);
+        } catch (e) { return []; }
+    }
+    function saveTrips(trips) {
+        try { localStorage.setItem(STORAGE_KEYS.trips, JSON.stringify(trips)); } catch (e) {}
+    }
+    function loadFavorites() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.favorites);
+            if (!raw) return [];
+            return JSON.parse(raw);
+        } catch (e) { return []; }
+    }
+    function saveFavorites(favs) {
+        try { localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify(favs)); } catch (e) {}
+    }
+    function loadSettingsStore() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.settings);
+            if (!raw) return { theme: 'gold', priceAlerts: false, weatherAlerts: false, dailyReminder: false };
+            return JSON.parse(raw);
+        } catch (e) {
+            return { theme: 'gold', priceAlerts: false, weatherAlerts: false, dailyReminder: false };
+        }
+    }
+    function saveSettingsStore(data) {
+        try { localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(data)); } catch (e) {}
+    }
+
+    let currentUser = loadUser();
+    let userProfile = loadProfile();
+
+    let selectedDates = [];
+    let likedTags = [...(userProfile.likedTags || [])];
+    let userBudgetScore = 0;
+    let currentIndex = 0;
+
+    let userPreferences = {
+        tempo: userProfile.tempo,
+        price: userProfile.price,
+        transportation: userProfile.transportation,
+        tourGuide: userProfile.tourGuide
+    };
+
+    let evaluationSetupDone = false;
+    let currentDayMapData = { dayNumber: 1, activities: [] };
+    let currentItinerary = null;
+    let tripDates = [];
+    let authMode = 'login';
+    let toastTimeout = null;
+    let favorites = loadFavorites();
+    let settingsStore = loadSettingsStore();
+    let lastAiContext = null;
+    let assistantOpen = false;
+    let dayMapInstance = null;
+    let dayMapMarkers = null;
+    const CHECKIN_KEY = 'planner_checkins_v1';
+    const loadCheckins = () => { try { return JSON.parse(localStorage.getItem(CHECKIN_KEY)) || {}; } catch (e) { return {}; } };
+    const saveCheckins = (data) => { try { localStorage.setItem(CHECKIN_KEY, JSON.stringify(data)); } catch (e) {} };
+    let checkins = loadCheckins();
+
+    const cleanText = (str) => (str || '').replace(/[^\x09\x0A\x0D\x20-\x7E]/g, ' ').replace(/\s+/g, ' ').trim();
+    const cleanTextMultiline = (str) => (str || '').replace(/[^\x09\x0A\x0D\x20-\x7E]/g, ' ').replace(/[ ]{2,}/g, ' ').trim();
+    const timeToMinutes = (timeStr) => {
+        if (!timeStr || typeof timeStr !== 'string') return null;
+        const match = timeStr.trim().match(/(\d{1,2}):(\d{2})/);
+        if (!match) return null;
+        return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+    };
+    const durationToMinutes = (str) => {
+        if (!str) return 60;
+        const m = String(str).match(/(\d+)/);
+        return m ? parseInt(m[1], 10) : 60;
+    };
+
+    function getDayStopsWithStatus(dayNumber) {
+        const day = currentItinerary && currentItinerary[dayNumber - 1];
+        if (!day || !Array.isArray(day)) return [];
+        return day.map((a, idx) => {
+            const completed = !!checkins[`${dayNumber}-${a.id}-completed`];
+            const arrived = !!checkins[`${dayNumber}-${a.id}`];
+            return { ...a, idx, completed, arrived };
+        });
+    }
+
+    function getNextStopFromContext(dayNumber, currentActivityId) {
+        const stops = getDayStopsWithStatus(dayNumber);
+        if (!stops.length) return null;
+        let startIdx = 0;
+        if (currentActivityId !== undefined && currentActivityId !== null) {
+            const idx = stops.findIndex(s => s.id === currentActivityId);
+            if (idx >= 0) startIdx = idx + 1;
+        }
+        return stops.slice(startIdx).find(s => !s.completed) || stops.find(s => !s.completed) || null;
+    }
+
+    function buildDaySummary(stops) {
+        return stops.map(s => `${s.completed ? '(done) ' : ''}${s.title}${s.time ? ` @ ${s.time}` : ''}`).join('; ');
+    }
+
+    function buildDayScheduleDetailed(stops) {
+        return stops.map(s => {
+            const status = s.completed ? 'done' : s.arrived ? 'arrived' : 'pending';
+            const when = s.time || 'TBD';
+            const dur = s.duration || 'n/a';
+            return `${status}: ${s.title} @ ${when} (dur ${dur})`;
+        }).join(' | ');
+    }
+
+    function swapCurrentToTomorrow(dayNumber, activityId) {
+        if (!currentItinerary || !currentItinerary.length) {
+            showToast('No itinerary to edit.', 'error');
+            return;
+        }
+        const dayIdx = dayNumber - 1;
+        const today = currentItinerary[dayIdx];
+        if (!Array.isArray(today)) {
+            showToast('Cannot find today\'s plan.', 'error');
+            return;
+        }
+        const actIdx = today.findIndex(a => a.id === activityId);
+        if (actIdx === -1) {
+            showToast('Activity not found.', 'error');
+            return;
+        }
+        const activity = today.splice(actIdx, 1)[0];
+
+        // Push to tomorrow (create if missing)
+        const tomorrowIdx = dayIdx + 1;
+        if (!currentItinerary[tomorrowIdx]) currentItinerary[tomorrowIdx] = [];
+        currentItinerary[tomorrowIdx].push(activity);
+
+        // Add a simple indoor placeholder for today
+        const indoor = {
+            id: Date.now(),
+            title: 'Indoor alternative (swap)',
+            time: activity.time || 'TBD',
+            duration: activity.duration || '1 hr',
+            details: 'Indoor option added after swap.',
+            insta: 'Capture a cozy indoor moment.'
+        };
+        today.splice(actIdx, 0, indoor);
+
+        saveItinerary(currentItinerary);
+        renderItineraryUI(currentItinerary, tripDates || []);
+        showToast('Swapped and moved to tomorrow. Refresh chat for updated context.', 'success');
+    }
+
+    function isOutdoor(activity) {
+        const cat = (activity?.category || '').toLowerCase();
+        const tag = (activity?.tag || '').toLowerCase();
+        const details = (activity?.details || '').toLowerCase();
+        const outdoorHints = ['adventure', 'park', 'outdoor', 'nature', 'sight', 'walk', 'boat', 'tour', 'view'];
+        return outdoorHints.some(h => cat.includes(h) || tag.includes(h) || details.includes(h));
+    }
+
+    function buildChatContext(dayNumber, activity, status, timingNote, arrivalIso) {
+        const stops = getDayStopsWithStatus(dayNumber);
+        const nextStop = getNextStopFromContext(dayNumber, activity ? activity.id : null);
+        const completedTitles = stops.filter(s => s.completed).map(s => s.title);
+        const dayDate = tripDates && tripDates[dayNumber - 1] ? new Date(tripDates[dayNumber - 1]) : new Date();
+        const weather = simulateWeather(dayDate);
+        const weatherDesc = `${weather.desc} ${weather.temp}`.replace(/AøC/g, '°C');
+        return {
+            status,
+            dayNumber,
+            activityId: activity?.id,
+            activityTitle: activity?.title,
+            activityTime: activity?.time,
+            activityDuration: activity?.duration,
+            activityDetails: activity?.details,
+            insta: activity?.insta,
+            timingNote,
+            arrivalIso,
+            nextStopTitle: nextStop?.title,
+            nextStopTime: nextStop?.time,
+            nextStopDuration: nextStop?.duration,
+            daySummary: buildDaySummary(stops),
+            dayScheduleDetail: buildDayScheduleDetailed(stops),
+            completedTitles,
+            weatherDesc,
+            isCurrentOutdoor: isOutdoor(activity),
+            isNextOutdoor: isOutdoor(nextStop)
+        };
+    }
+
+    /* ---------- TOAST ---------- */
+    function showToast(message, type = 'info') {
+        const toast = document.getElementById('toast');
+        if (!toast) return;
+        toast.textContent = message;
+        toast.className = '';
+        toast.classList.add(type);
+        toast.classList.add('show');
+        clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => {
+            toast.classList.remove('show');
+        }, 2800);
+    }
+
+    /* ---------- ASSISTANT & CHAT (AI toggle gated) ---------- */
+    function updateAiUiVisibility() {
+        const drawer = document.getElementById('assistantDrawer');
+        const fab = document.getElementById('chatFab');
+        const modal = document.getElementById('chatModal');
+        const shouldShow = !!userProfile.tourGuide;
+        if (drawer) drawer.style.display = shouldShow ? 'flex' : 'none';
+        if (fab) fab.style.display = shouldShow ? 'flex' : 'none';
+        if (!shouldShow && modal) modal.classList.remove('open');
+    }
+
+    function showAssistant(messageHtml = 'Assistant is standing by.') {
+        if (!userProfile.tourGuide) return;
+        const drawer = document.getElementById('assistantDrawer');
+        const content = document.getElementById('assistantContent');
+        if (!drawer || !content) return;
+        content.innerHTML = messageHtml;
+        drawer.classList.remove('collapsed');
+        drawer.classList.add('open');
+        assistantOpen = true;
+    }
+
+    function hideAssistant() {
+        const drawer = document.getElementById('assistantDrawer');
+        if (!drawer) return;
+        drawer.classList.remove('open');
+        drawer.classList.add('collapsed');
+        assistantOpen = false;
+    }
+
+    function appendChatBubble(text, isUser = false) {
+        const container = document.getElementById('chatMessages');
+        if (!container) return;
+        const div = document.createElement('div');
+        div.className = `chat-bubble ${isUser ? 'me' : 'ai'}`;
+
+        const content = document.createElement('div');
+        content.className = 'bubble-text';
+        content.innerHTML = text;
+
+        div.appendChild(content);
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function openChatModal() {
+        if (!userProfile.tourGuide) return;
+        const modal = document.getElementById('chatModal');
+        if (modal) modal.classList.add('open');
+    }
+
+    function closeChatModal() {
+        const modal = document.getElementById('chatModal');
+        if (modal) modal.classList.remove('open');
+    }
+
+    function toggleChatSize() {
+        const modal = document.getElementById('chatModal');
+        if (!modal) return;
+        modal.classList.toggle('expanded');
+    }
+
+    function sendChatMessage() {
+        if (!userProfile.tourGuide) return;
+        const input = document.getElementById('chatInput');
+        if (!input) return;
+        const text = input.value.trim();
+        if (!text) return;
+        appendChatBubble(text, true);
+        input.value = '';
+        sendChatPrompt(text);
+    }
+
+    function handleChatKeydown(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendChatMessage();
+        }
+    }
+
+    /* ---------- CITY & START CONTROL ---------- */
+    function populateCityOptions() {
+        const dataList = document.getElementById('cityOptions');
+        if (!dataList) return;
+        dataList.innerHTML = CITY_OPTIONS.map(city => `<option value="${city.label}">${city.region}</option>`).join('');
+    }
+
+    function populateCitySelect() {
+        const select = document.getElementById('citySelector');
+        if (!select) return;
+        select.innerHTML = CITY_OPTIONS.map(city => `<option value="${city.label}">${city.label}</option>`).join('');
+    }
+
+    function handleCityInput(value) {
+        const trimmed = (value || '').trim();
+        const match = CITY_OPTIONS.find(c => c.label.toLowerCase() === trimmed.toLowerCase());
+        if (match) {
+            userProfile.city = match.label;
+        } else {
+            userProfile.city = trimmed;
+        }
+        saveProfile(userProfile);
+        updateStartButtonState();
+    }
+
+    function initCitySelector() {
+        populateCityOptions();
+        populateCitySelect();
+        const input = document.getElementById('citySelector');
+        if (!input) return;
+        input.value = userProfile.city || CITY_OPTIONS[0].label;
+        handleCityInput(input.value);
+        input.addEventListener('input', (e) => handleCityInput(e.target.value));
+        input.addEventListener('change', (e) => handleCityInput(e.target.value));
+    }
+
+    function isStartReady() {
+        return selectedDates.length === 2 && !!(userProfile.city && userProfile.city.trim());
+    }
+
+    function updateStartButtonState() {
+        const startBtn = document.getElementById('startBtn');
+        if (startBtn) startBtn.disabled = !isStartReady();
+    }
+
+    /* ---------- PASSWORD VISIBILITY ---------- */
+    function initPasswordToggles() {
+        document.querySelectorAll('.toggle-visibility').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const targetId = btn.getAttribute('data-target');
+                const input = document.getElementById(targetId);
+                if (!input) return;
+                const isPassword = input.type === 'password';
+                input.type = isPassword ? 'text' : 'password';
+                btn.innerHTML = `<i class="fa-solid ${isPassword ? 'fa-eye-slash' : 'fa-eye'}"></i>`;
+            });
+        });
+    }
+
+    /* ---------- THEME & SETTINGS ---------- */
+    function applyTheme(theme, persist = false) {
+        const root = document.documentElement;
+        const themes = {
+            gold: {
+                '--primary-bg': '#050816',
+                '--card-surface': '#0F172A',
+                '--accent-gold': '#FACC15',
+                '--accent-cyan': '#67E8F9',
+                '--primary-text': '#F7F9FB',
+                '--secondary-text': '#9CA3AF',
+                '--muted-text': '#6B7280',
+                '--btn-bg-start': '#FACC15',
+                '--btn-bg-end': '#F4B400',
+                '--btn-text': '#030712',
+                '--btn-shadow': '0 10px 18px rgba(250, 204, 21, 0.28)',
+                '--btn-shadow-strong': '0 14px 26px rgba(250, 204, 21, 0.38)'
+            },
+            emerald: {
+                '--primary-bg': '#041410',
+                '--card-surface': '#0a1f1a',
+                '--accent-gold': '#34d399',
+                '--accent-cyan': '#22d3ee',
+                '--primary-text': '#e4f5ef',
+                '--secondary-text': '#8abfaf',
+                '--muted-text': '#6b9080',
+                '--btn-bg-start': '#6ee7b7',
+                '--btn-bg-end': '#34d399',
+                '--btn-text': '#052018',
+                '--btn-shadow': '0 14px 24px rgba(52, 211, 153, 0.35)',
+                '--btn-shadow-strong': '0 18px 34px rgba(52, 211, 153, 0.45)'
+            },
+            sunset: {
+                '--primary-bg': '#160814',
+                '--card-surface': '#1f0f24',
+                '--accent-gold': '#fca5a5',
+                '--accent-cyan': '#a855f7',
+                '--primary-text': '#f5e7ff',
+                '--secondary-text': '#d6b8f2',
+                '--muted-text': '#9d89b5',
+                '--btn-bg-start': '#fca5a5',
+                '--btn-bg-end': '#c084fc',
+                '--btn-text': '#2a0c1d',
+                '--btn-shadow': '0 14px 24px rgba(240, 171, 252, 0.32)',
+                '--btn-shadow-strong': '0 18px 34px rgba(240, 171, 252, 0.42)'
+            },
+            liquid: {
+                '--primary-bg': '#030712',
+                '--card-surface': 'rgba(10, 20, 35, 0.24)',
+                '--accent-gold': '#8fd3ff',
+                '--accent-cyan': '#b7c5ff',
+                '--primary-text': '#f4f8ff',
+                '--secondary-text': '#d6e4f8',
+                '--muted-text': '#a6bddf',
+                '--btn-bg-start': 'rgba(255, 255, 255, 0.45)',
+                '--btn-bg-end': 'rgba(200, 224, 255, 0.38)',
+                '--btn-text': '#0b1224',
+                '--btn-shadow': '0 20px 30px rgba(167, 224, 255, 0.25)',
+                '--btn-shadow-strong': '0 24px 42px rgba(183, 197, 255, 0.32)'
+            }
+        };
+        const chosen = themes[theme] || themes.gold;
+        Object.entries(chosen).forEach(([k,v]) => root.style.setProperty(k, v));
+        root.setAttribute('data-theme', theme);
+        if (document.body) document.body.setAttribute('data-theme', theme);
+        if (persist) {
+            settingsStore.theme = theme;
+            saveSettingsStore(settingsStore);
+        }
+        const select = document.getElementById('themeSelect');
+        if (select) select.value = theme;
+    }
+
+    function saveSettingsToggle(key, value) {
+        settingsStore[key] = value;
+        saveSettingsStore(settingsStore);
+        showToast('Settings updated.', 'success');
+    }
+
+    function hydrateSettingsUI() {
+        const price = document.getElementById('togglePriceAlerts');
+        const weather = document.getElementById('toggleWeatherAlerts');
+        const daily = document.getElementById('toggleDailyReminder');
+        const themeSelect = document.getElementById('themeSelect');
+        if (price) price.checked = !!settingsStore.priceAlerts;
+        if (weather) weather.checked = !!settingsStore.weatherAlerts;
+        if (daily) daily.checked = !!settingsStore.dailyReminder;
+        if (themeSelect) themeSelect.value = settingsStore.theme || 'gold';
+        const tgSettings = document.getElementById('settingsTourGuideToggle');
+        if (tgSettings) tgSettings.checked = !!userPreferences.tourGuide;
+    }
+
+    /* ---------- UI HELPERS ---------- */
+    function setActiveTab(tab) {
+        const planBtn = document.getElementById('tab-plan');
+        const profileBtn = document.getElementById('tab-profile');
+        const nav = document.querySelector('.tab-nav');
+        if (!planBtn || !profileBtn) return;
+        planBtn.classList.toggle('active', tab === 'plan');
+        profileBtn.classList.toggle('active', tab === 'profile');
+        const activeBtn = tab === 'plan' ? planBtn : profileBtn;
+        if (nav && activeBtn) {
+            const navRect = nav.getBoundingClientRect();
+            const btnRect = activeBtn.getBoundingClientRect();
+            nav.style.setProperty('--tab-pill-left', `${btnRect.left - navRect.left}px`);
+            nav.style.setProperty('--tab-pill-width', `${btnRect.width}px`);
+        }
+    }
+
+    function showOnlySection(id) {
+        const sections = document.querySelectorAll('main > section');
+        sections.forEach(sec => sec.classList.remove('active'));
+        const target = document.getElementById(id);
+        if (target) target.classList.add('active');
+
+        if (id === 'profile' || id === 'auth' || id === 'settings' || id === 'pastTrips') {
+            setActiveTab('profile');
+        } else {
+            setActiveTab('plan');
+        }
+    }
+
+    function openPlannerTab() {
+        if (!currentUser) {
+            setAuthMode('login');
+            showOnlySection('auth');
+            return;
+        }
+        const savedItinerary = loadItinerary();
+        if (savedItinerary && userProfile.startDate && userProfile.endDate) {
+            currentItinerary = savedItinerary;
+            const dates = getDaysArray(new Date(userProfile.startDate), new Date(userProfile.endDate));
+            renderItineraryUI(savedItinerary, dates);
+            showOnlySection('results');
+        } else if (currentIndex > 0 && currentIndex < experiences.length) {
+            showOnlySection('swiper');
+        } else {
+            showOnlySection('intro');
+        }
+    }
+
+    function openPlanner() {
+        openPlannerTab();
+    }
+
+    function goToPlannerStart() {
+        clearPlannerState();
+        showOnlySection('intro');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function openHome() {
+        showOnlySection('home');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function openProfileTab() {
+        if (currentUser) {
+            populateProfileUI();
+            renderTripsOnProfile();
+            showOnlySection('profile');
+        } else {
+            setAuthMode('login');
+            showOnlySection('auth');
+        }
+    }
+
+    function openProfileFromMenu() {
+        closeProfileDropdown();
+        openProfileTab();
+    }
+
+    function openPastTripsTab() {
+        if (currentUser) {
+            populateProfileUI();
+            renderTripsOnProfile();
+            showOnlySection('pastTrips');
+            setTimeout(() => {
+                const tripsBlock = document.getElementById('previousTripsContainer');
+                if (tripsBlock) {
+                    tripsBlock.scrollTop = 0;
+                }
+            }, 50);
+        } else {
+            setAuthMode('login');
+            showOnlySection('auth');
+        }
+    }
+
+    function openPastTripsFromMenu() {
+        closeProfileDropdown();
+        openPastTripsTab();
+    }
+
+    function openSettingsFromMenu() {
+        closeProfileDropdown();
+        showOnlySection('settings');
+    }
+
+    function logoutFromMenu() {
+        closeProfileDropdown();
+        logout();
+    }
+
+    function toggleProfileDropdown(event) {
+        event.stopPropagation();
+        const dropdown = document.getElementById('profileDropdown');
+        if (!dropdown) return;
+        dropdown.classList.toggle('open');
+    }
+
+    function closeProfileDropdown() {
+        const dropdown = document.getElementById('profileDropdown');
+        if (dropdown) dropdown.classList.remove('open');
+    }
+
+    document.addEventListener('click', () => {
+        closeProfileDropdown();
+    });
+
+    function initSignupTourGuideToggle() {
+        const toggle = document.getElementById('signupTourGuide');
+        const note = document.getElementById('signupTourGuideNote');
+        if (!toggle || !note) return;
+        const sync = () => {
+            note.style.display = toggle.checked ? 'block' : 'none';
+        };
+        toggle.addEventListener('change', sync);
+        sync();
+    }
+
+    function clearPlannerState() {
+        selectedDates = [];
+        likedTags = [...(userProfile.likedTags || [])];
+        userBudgetScore = 0;
+        currentIndex = 0;
+        const startBtn = document.getElementById('startBtn');
+        if (startBtn) startBtn.disabled = true;
+        if (datePicker) datePicker.clear();
+        const cardStack = document.getElementById('cardStack');
+        if (cardStack) cardStack.innerHTML = '';
+        const itineraryContent = document.getElementById('itineraryContent');
+        if (itineraryContent) itineraryContent.innerHTML = '';
+        updateStartButtonState();
+    }
+
+    /* ---------- AUTH MODE SWITCH ---------- */
+    function setAuthMode(mode) {
+        authMode = mode;
+        const loginForm = document.getElementById('loginForm');
+        const signupForm = document.getElementById('signupForm');
+        const btnLogin = document.getElementById('btnAuthLogin');
+        const btnSignup = document.getElementById('btnAuthSignup');
+        const titleEl = document.getElementById('authTitle');
+        const subEl = document.getElementById('authSubtitle');
+
+        if (!loginForm || !signupForm || !btnLogin || !btnSignup) return;
+
+        if (mode === 'login') {
+            loginForm.classList.remove('hidden');
+            signupForm.classList.add('hidden');
+            btnLogin.classList.add('active');
+            btnSignup.classList.remove('active');
+            if (titleEl) titleEl.textContent = 'Welcome back';
+            if (subEl) subEl.textContent = 'Log in to access your Chicago AI trips.';
+        } else {
+            signupForm.classList.remove('hidden');
+            loginForm.classList.add('hidden');
+            btnSignup.classList.add('active');
+            btnLogin.classList.remove('active');
+            if (titleEl) titleEl.textContent = 'Create Your Account';
+            if (subEl) subEl.textContent = 'Save your Chicago itineraries under one profile.';
+        }
+    }
+
+    /* ---------- PROFILE UI ---------- */
+    function populateProfileUI() {
+        if (!currentUser) return;
+        const fullName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'User';
+        const email = currentUser.email || 'user@example.com';
+        const initial = (currentUser.firstName || 'U').charAt(0).toUpperCase();
+        const avatarColor = userProfile.avatarColor || '#EAB308';
+
+        const profileNameEl = document.getElementById('profileName');
+        const profileEmailEl = document.getElementById('profileEmail');
+        const profileAvatarEl = document.getElementById('profileAvatar');
+        const headerAvatarEl = document.getElementById('headerAvatar');
+        const profileMenu = document.getElementById('profileMenu');
+
+        if (profileNameEl) profileNameEl.textContent = fullName.toLowerCase();
+        if (profileEmailEl) profileEmailEl.textContent = email;
+        if (profileAvatarEl) {
+            profileAvatarEl.textContent = initial;
+            profileAvatarEl.style.background = avatarColor;
+        }
+        if (headerAvatarEl) {
+            headerAvatarEl.textContent = initial;
+            headerAvatarEl.style.background = avatarColor;
+        }
+        if (profileMenu) profileMenu.style.display = 'flex';
+        renderTravelDNA();
+        renderBadges();
+        renderFavorites();
+        fillEditForm(fullName, avatarColor);
+    }
+
+    /* ---------- LOGIN & SIGNUP HANDLERS ---------- */
+    function handleLoginSubmit(event) {
+        event.preventDefault();
+
+        const emailInput = document.getElementById('loginEmail');
+        const passwordInput = document.getElementById('loginPassword');
+        const emailError = document.getElementById('loginEmailError');
+        const passwordError = document.getElementById('loginPasswordError');
+        const loginError = document.getElementById('loginError');
+
+        [emailInput, passwordInput].forEach(i => i.classList.remove('input-error'));
+        [emailError, passwordError, loginError].forEach(e => e.textContent = '');
+
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
+
+        let hasError = false;
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        if (!email) {
+            emailInput.classList.add('input-error');
+            emailError.textContent = 'Email is required.';
+            hasError = true;
+        } else if (!emailRegex.test(email)) {
+            emailInput.classList.add('input-error');
+            emailError.textContent = 'Enter a valid email.';
+            hasError = true;
+        }
+
+        if (!password) {
+            passwordInput.classList.add('input-error');
+            passwordError.textContent = 'Password is required.';
+            hasError = true;
+        }
+
+        if (hasError) return;
+
+        const storedUser = loadUser();
+        if (!storedUser) {
+            loginError.textContent = 'No account found. Please sign up first.';
+            return;
+        }
+
+        if (storedUser.email !== email || storedUser.password !== password) {
+            loginError.textContent = 'Incorrect email or password.';
+            return;
+        }
+
+        const remember = document.getElementById('rememberMe');
+        if (remember && remember.checked) {
+            try { localStorage.setItem('remember_me', '1'); } catch (e) {}
+            try { localStorage.setItem('last_creds', JSON.stringify({ email, password })); } catch (e) {}
+        } else {
+            try { localStorage.removeItem('remember_me'); } catch (e) {}
+            try { localStorage.removeItem('last_creds'); } catch (e) {}
+        }
+
+        currentUser = storedUser;
+        populateProfileUI();
+        renderTripsOnProfile();
+        clearPlannerState();
+        showOnlySection('intro');
+        showToast('Welcome back!', 'success');
+    }
+
+    function handleRegisterSubmit(event) {
+        event.preventDefault();
+
+        const firstNameInput = document.getElementById('firstName');
+        const lastNameInput = document.getElementById('lastName');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const passwordConfirmInput = document.getElementById('passwordConfirm');
+        const signupTourGuideToggle = document.getElementById('signupTourGuide');
+
+        const firstNameError = document.getElementById('firstNameError');
+        const lastNameError = document.getElementById('lastNameError');
+        const emailError = document.getElementById('emailError');
+        const passwordError = document.getElementById('passwordError');
+        const passwordConfirmError = document.getElementById('passwordConfirmError');
+
+        [firstNameInput, lastNameInput, emailInput, passwordInput, passwordConfirmInput].forEach(i => i.classList.remove('input-error'));
+        [firstNameError, lastNameError, emailError, passwordError, passwordConfirmError].forEach(e => e.textContent = '');
+
+        const firstName = firstNameInput.value.trim();
+        const lastName = lastNameInput.value.trim();
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
+        const passwordConfirm = passwordConfirmInput.value;
+
+        let hasError = false;
+
+        if (!firstName) {
+            firstNameInput.classList.add('input-error');
+            firstNameError.textContent = 'First name is required.';
+            hasError = true;
+        }
+
+        if (!lastName) {
+            lastNameInput.classList.add('input-error');
+            lastNameError.textContent = 'Last name is required.';
+            hasError = true;
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!email) {
+            emailInput.classList.add('input-error');
+            emailError.textContent = 'Email is required.';
+            hasError = true;
+        } else if (!emailRegex.test(email)) {
+            emailInput.classList.add('input-error');
+            emailError.textContent = 'Enter a valid email.';
+            hasError = true;
+        }
+
+        if (!password) {
+            passwordInput.classList.add('input-error');
+            passwordError.textContent = 'Password is required.';
+            hasError = true;
+        } else if (password.length < 6) {
+            passwordInput.classList.add('input-error');
+            passwordError.textContent = 'Minimum 6 characters.';
+            hasError = true;
+        }
+
+        if (!passwordConfirm) {
+            passwordConfirmInput.classList.add('input-error');
+            passwordConfirmError.textContent = 'Please repeat the password.';
+            hasError = true;
+        } else if (password !== passwordConfirm) {
+            passwordConfirmInput.classList.add('input-error');
+            passwordConfirmError.textContent = 'Passwords do not match.';
+            hasError = true;
+        }
+
+        if (hasError) return;
+
+        const newUser = {
+            firstName,
+            lastName,
+            email,
+            password,
+            createdAt: new Date().toISOString()
+        };
+
+        const tourGuidePref = !!signupTourGuideToggle?.checked;
+        userPreferences.tourGuide = tourGuidePref;
+        userProfile.tourGuide = tourGuidePref;
+
+        currentUser = newUser;
+        saveUser(newUser);
+        populateProfileUI();
+        renderTripsOnProfile();
+        clearPlannerState();
+        showOnlySection('intro');
+        updateAiUiVisibility();
+        showToast('Account created and signed in.', 'success');
+    }
+
+    /* ---------- PROFILE DNA & FAVORITES ---------- */
+    function renderTravelDNA() {
+        const dna = document.getElementById('dnaStats');
+        if (!dna) return;
+        const stats = [
+            { label: 'Tempo', value: userPreferences.tempo, desc: getRulerValue('tempo', userPreferences.tempo) },
+            { label: 'Price', value: userPreferences.price, desc: getRulerValue('price', userPreferences.price) },
+            { label: 'Transportation', value: userPreferences.transportation, desc: getRulerValue('transportation', userPreferences.transportation) }
+        ];
+        dna.innerHTML = stats.map(s => `
+            <div class="dna-stat">
+                <div class="dna-stat-header">
+                    <span>${s.label}</span>
+                    <span style="color: var(--accent-gold); font-weight:700;">${s.desc}</span>
+                </div>
+                <div class="dna-bar"><div class="dna-bar-fill" style="width:${s.value}%;"></div></div>
+            </div>
+        `).join('');
+    }
+
+    function getBadges() {
+        const badges = [];
+        if (currentItinerary && currentItinerary.length) badges.push({ name: 'Route Builder', icon: 'fa-route', locked: false });
+        if ((userPreferences.price || 0) > 65) badges.push({ name: 'Luxury Lover', icon: 'fa-gem', locked: false });
+        if ((userPreferences.tempo || 0) > 65) badges.push({ name: 'Fast Tracker', icon: 'fa-bolt', locked: false });
+        if (likedTags.includes('food_mid') || likedTags.includes('luxury_food')) badges.push({ name: 'Foodie', icon: 'fa-pizza-slice', locked: false });
+        if (!badges.length) badges.push({ name: 'Getting Started', icon: 'fa-seedling', locked: false });
+        // locked examples
+        badges.push({ name: 'Night Owl', icon: 'fa-moon', locked: true });
+        badges.push({ name: 'Culture Guru', icon: 'fa-landmark', locked: true });
+        return badges;
+    }
+
+    function renderBadges() {
+        const row = document.getElementById('badgeRow');
+        if (!row) return;
+        row.innerHTML = '';
+        getBadges().forEach(b => {
+            const div = document.createElement('div');
+            div.className = 'badge-pill' + (b.locked ? ' locked' : '');
+            div.innerHTML = `<i class="fa-solid ${b.icon}"></i> ${b.name}`;
+            row.appendChild(div);
+        });
+    }
+
+    function renderFavorites() {
+        const container = document.getElementById('savedPlaces');
+        if (!container) return;
+        container.innerHTML = '';
+        if (!favorites || favorites.length === 0) {
+            container.innerHTML = `<div class="fav-empty">No saved places yet. Tap "Save place" on an activity.</div>`;
+            return;
+        }
+        favorites.slice().reverse().forEach(f => {
+            const div = document.createElement('div');
+            div.className = 'saved-place';
+            div.innerHTML = `<div><strong>${f.title}</strong><br><span>${f.category || ''}</span></div>
+                <button class="btn-secondary btn" style="padding:6px 10px; font-size:0.78rem;" onclick="removeFavorite('${f.id}')">Remove</button>`;
+            container.appendChild(div);
+        });
+    }
+
+    function toggleFavorite(id) {
+        const allActivities = experiences;
+        const activity = allActivities.find(a => a.id === id);
+        if (!activity) return;
+        const exists = favorites.some(f => f.id === id);
+        if (exists) {
+            favorites = favorites.filter(f => f.id !== id);
+            saveFavorites(favorites);
+            renderFavorites();
+            showToast('Removed from saved places.', 'info');
+        } else {
+            favorites.push({ id: activity.id, title: activity.title, category: activity.category });
+            saveFavorites(favorites);
+            renderFavorites();
+            showToast('Saved to places.', 'success');
+        }
+    }
+
+    function removeFavorite(id) {
+        favorites = favorites.filter(f => f.id !== id);
+        saveFavorites(favorites);
+        renderFavorites();
+    }
+
+    const HOLD_MS = 2000;
+
+    function startHold(action, dayNumber, activityId, btn, evt) {
+        if (evt) evt.stopPropagation();
+        if (!userProfile.tourGuide) {
+            showToast('Turn on AI Tour Guide to send signals.', 'info');
+            return;
+        }
+        if (!btn) return;
+        if (btn.dataset.holdTimer) clearTimeout(btn.dataset.holdTimer);
+        btn.dataset.holdTimer = setTimeout(() => {
+            btn.dataset.holdTimer = null;
+            if (action === 'arrived') {
+                handleCheckin(dayNumber, activityId, btn);
+            } else if (action === 'completed') {
+                handleComplete(dayNumber, activityId, btn);
+            }
+        }, HOLD_MS);
+    }
+
+    function cancelHold(btn) {
+        if (!btn || !btn.dataset.holdTimer) return;
+        clearTimeout(btn.dataset.holdTimer);
+        btn.dataset.holdTimer = null;
+        showToast('Hold 2s to send Arrived/Completed.', 'info');
+    }
+
+    function handleCheckin(dayNumber, activityId, btn) {
+        const day = currentItinerary && currentItinerary[dayNumber - 1];
+        if (!day) return;
+        const activity = day.find(a => a.id === activityId);
+        if (!activity) return;
+
+        const now = new Date();
+        const nowMin = now.getHours() * 60 + now.getMinutes();
+        const scheduledStart = timeToMinutes(activity.time);
+        const plannedDuration = durationToMinutes(activity.duration);
+        let timingNote = 'On schedule.';
+        if (scheduledStart !== null) {
+            const expectedEnd = scheduledStart + plannedDuration;
+            const diff = Math.round(nowMin - expectedEnd);
+            if (diff > 10) timingNote = `Running ${diff} min late.`;
+            else if (diff < -10) timingNote = `You are ${Math.abs(diff)} min early.`;
+        }
+
+        const key = `${dayNumber}-${activityId}`;
+        checkins[key] = { ts: now.getTime(), title: activity.title, timingNote };
+        saveCheckins(checkins);
+
+        if (btn) btn.classList.add('active');
+
+        // store context for AI chat
+        const arrivalIso = now.toISOString();
+        lastAiContext = buildChatContext(dayNumber, activity, 'arrived', timingNote, arrivalIso);
+
+        if (userProfile.tourGuide) {
+            const nextStop = getNextStopFromContext(dayNumber, activity.id);
+            const detail = activity.details ? `What to do: ${activity.details}` : '';
+            const insta = activity.insta ? `Tip: ${activity.insta}` : '';
+            const duration = activity.duration || 'Est. 1 hr';
+            const sched = activity.time || 'TBD';
+            const nextLine = nextStop
+                ? `<div style="margin-top:6px;">Next planned: ${nextStop.title}${nextStop.time ? ` @ ${nextStop.time}` : ''}. Want to head there now or swap?</div>`
+                : `<div style="margin-top:6px;">This was the last planned stop. Want a nearby alternate?</div>`;
+            const note = `
+                <strong>Arrived:</strong> ${activity.title}<br>
+                ${timingNote}<br>
+                <div style="margin-top:6px;">
+                    <div><em>${duration} • Planned at ${sched}</em></div>
+                    ${detail ? `<div>${detail}</div>` : ''}
+                    ${insta ? `<div>${insta}</div>` : ''}
+                </div>
+                ${nextLine}
+                <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+                    <button class="btn-secondary" style="padding:6px 10px; font-size:0.8rem;" onclick="swapCurrentToTomorrow(${dayNumber}, ${activity.id})">Swap & move to tomorrow</button>
+                </div>
+                <div style="margin-top:6px; color: var(--secondary-text);">Ask me to adjust timing if you're early/late.</div>
+            `;
+            showAssistant(note);
+        } else {
+            showToast('Check-in recorded.', 'success');
+        }
+    }
+
+    function handleComplete(dayNumber, activityId, btn) {
+        const day = currentItinerary && currentItinerary[dayNumber - 1];
+        if (!day) return;
+        const activity = day.find(a => a.id === activityId);
+        if (!activity) return;
+
+        const key = `${dayNumber}-${activityId}-completed`;
+        checkins[key] = { ts: Date.now(), title: activity.title, status: 'completed' };
+        saveCheckins(checkins);
+
+        if (btn) btn.classList.add('active');
+
+        // store context for AI chat
+        lastAiContext = buildChatContext(dayNumber, activity, 'completed', null, null);
+
+        if (userProfile.tourGuide) {
+            showAssistant(`<strong>Completed:</strong> ${activity.title}<br><div style="margin-top:6px;">Logged. Want me to adjust timing or suggest what’s next?</div>`);
+        } else {
+            showToast('Marked complete.', 'success');
+        }
+    }
+
+    function fillEditForm(fullName, avatarColor) {
+        const first = document.getElementById('editFirstName');
+        const last = document.getElementById('editLastName');
+        const email = document.getElementById('editEmail');
+        const color = document.getElementById('editAvatarColor');
+        const tempo = document.getElementById('editTempo');
+        const price = document.getElementById('editPrice');
+        const transportation = document.getElementById('editTransportation');
+        if (first && currentUser) first.value = currentUser.firstName || '';
+        if (last && currentUser) last.value = currentUser.lastName || '';
+        if (email && currentUser) email.value = currentUser.email || '';
+        if (color) color.value = avatarColor || '#EAB308';
+        if (tempo) tempo.value = userPreferences.tempo || 50;
+        if (price) price.value = userPreferences.price || 50;
+        if (transportation) transportation.value = userPreferences.transportation || 50;
+    }
+
+    function saveProfileEdit() {
+        if (!currentUser) return;
+        const first = document.getElementById('editFirstName');
+        const last = document.getElementById('editLastName');
+        const color = document.getElementById('editAvatarColor');
+        const tempo = document.getElementById('editTempo');
+        const price = document.getElementById('editPrice');
+        const transportation = document.getElementById('editTransportation');
+        currentUser.firstName = (first?.value || '').trim() || currentUser.firstName;
+        currentUser.lastName = (last?.value || '').trim() || currentUser.lastName;
+        userProfile.avatarColor = color?.value || userProfile.avatarColor;
+        userPreferences.tempo = Number(tempo?.value || userPreferences.tempo);
+        userPreferences.price = Number(price?.value || userPreferences.price);
+        userPreferences.transportation = Number(transportation?.value || userPreferences.transportation);
+        userProfile.tempo = userPreferences.tempo;
+        userProfile.price = userPreferences.price;
+        userProfile.transportation = userPreferences.transportation;
+        saveUser(currentUser);
+        saveProfile(userProfile);
+        populateProfileUI();
+        showToast('Profile updated.', 'success');
+    }
+
+    function cancelProfileEdit() {
+        if (!currentUser) return;
+        fillEditForm('', userProfile.avatarColor);
+        showToast('Changes discarded.', 'info');
+    }
+
+    function logout() {
+        currentUser = null;
+        try { localStorage.removeItem(USER_STORAGE_KEY); } catch (e) {}
+        try { localStorage.removeItem('remember_me'); localStorage.removeItem('last_creds'); } catch (e) {}
+        const profileMenu = document.getElementById('profileMenu');
+        if (profileMenu) profileMenu.style.display = 'none';
+        clearPlannerState();
+        setAuthMode('login');
+        showOnlySection('auth');
+        showToast('Signed out.', 'info');
+    }
+
+    function resetAllData() {
+        if (!confirm('This will clear your saved user, profile and trips from this browser. Continue?')) return;
+        try {
+            localStorage.removeItem(USER_STORAGE_KEY);
+            Object.values(STORAGE_KEYS).forEach(k => localStorage.removeItem(k));
+        } catch (e) {}
+
+        currentUser = null;
+        userProfile = { ...DEFAULT_PROFILE };
+        likedTags = [];
+        userPreferences = {
+            tempo: DEFAULT_PROFILE.tempo,
+            price: DEFAULT_PROFILE.price,
+            transportation: DEFAULT_PROFILE.transportation,
+            tourGuide: DEFAULT_PROFILE.tourGuide
+        };
+
+        const profileMenu = document.getElementById('profileMenu');
+        if (profileMenu) profileMenu.style.display = 'none';
+
+        clearPlannerState();
+        setAuthMode('login');
+        showOnlySection('auth');
+    }
+
+    /* ---------- DATE PICKER ---------- */
+    const datePicker = flatpickr("#dateRange", { 
+        mode: "range",
+        dateFormat: "d-m-Y",
+        minDate: "today",
+        onChange: (dates) => {
+            selectedDates = dates.length === 2 ? dates : [];
+            if (dates.length === 2) {
+                userProfile.startDate = dates[0].toISOString();
+                userProfile.endDate = dates[1].toISOString();
+                saveProfile(userProfile);
+            } else {
+                userProfile.startDate = null;
+                userProfile.endDate = null;
+                saveProfile(userProfile);
+            }
+            updateStartButtonState();
+        } 
+    });
+
+    function hydratePlannerInputsFromProfile() {
+        if (userProfile.startDate && userProfile.endDate && datePicker) {
+            const start = new Date(userProfile.startDate);
+            const end = new Date(userProfile.endDate);
+            selectedDates = [start, end];
+            datePicker.setDate(selectedDates, true);
+        }
+        const cityInput = document.getElementById('citySelector');
+        if (cityInput) cityInput.value = userProfile.city || CITY_OPTIONS[0].label;
+        updateStartButtonState();
+    }
+
+    /* ---------- PLANNER FLOW ---------- */
+    function startApp() { 
+        switchSection('intro', 'swiper'); 
+
+        likedTags = [];
+        userBudgetScore = 0;
+        currentIndex = 0;
+
+        userProfile.likedTags = [];
+        saveProfile(userProfile);
+
+        renderCards(); 
+    }
+
+    function switchSection(from, to) { 
+        const fromEl = document.getElementById(from);
+        const toEl = document.getElementById(to);
+        if (fromEl) fromEl.classList.remove('active'); 
+        
+        if (to === 'evaluation' && !evaluationSetupDone) {
+            setupEvaluationScreen();
+        }
+        if (to === 'evaluation') {
+            updateAllKnobs(); 
+        }
+        setTimeout(() => {
+            if (toEl) toEl.classList.add('active');
+        }, 450); 
+    }
+
+    function startProcessing() {
+        switchSection('evaluation', 'processing');
+        document.getElementById('aiLog').innerText = "Analyzing preferences and creating itinerary...";
+
+        setTimeout(() => { 
+            try {
+                document.getElementById('aiLog').innerText = "Finalizing optimal routes and guide generation...";
+                
+                generateItinerary(); 
+                
+                switchSection('processing', 'results'); 
+            } catch (error) {
+                document.getElementById('aiLog').innerText = "ERROR: Generation failed. Returning to profile review.";
+                setTimeout(() => switchSection('processing', 'evaluation'), 1500); 
+            }
+        }, 3000);
+    }
+    
+    function reviewProfile() {
+        switchSection('results', 'evaluation');
+    }
+
+    function addLikedTag(tag) {
+        if (!userProfile.likedTags.includes(tag)) {
+            userProfile.likedTags.push(tag);
+            saveProfile(userProfile);
+        }
+        if (!likedTags.includes(tag)) {
+            likedTags.push(tag);
+        }
+    }
+
+    function renderCards() {
+        const stack = document.getElementById('cardStack');
+        stack.innerHTML = '';
+        for (let i = experiences.length - 1; i >= currentIndex; i--) {
+            const item = experiences[i];
+            const card = document.createElement('div');
+            card.className = 'card'; 
+            card.id = `card-${i}`;
+            if (i > currentIndex) {
+                let scale = 1 - (i - currentIndex) * 0.05;
+                card.style.transform = `scale(${scale}) translateY(${(i - currentIndex) * 8}px)`;
+                card.style.zIndex = experiences.length - i;
+                card.style.opacity = i - currentIndex > 2 ? 0 : 1;
+            } else { 
+                card.style.zIndex = 100; 
+                initDrag(card, item); 
+            }
+            
+            let priceHtml = '';
+            if(item.price === 3) priceHtml = `<span class="dollar-luxury">$$$</span>`;
+            else if(item.price === 2) priceHtml = `<span class="dollar-active">$$</span><span class="dollar-inactive">$</span>`;
+            else priceHtml = `<span class="dollar-active">$</span><span class="dollar-inactive">$$</span>`;
+            
+            card.innerHTML = `
+                <div class="card-status status-like">LIKE</div>
+                <div class="card-status status-nope">SKIP</div>
+                <div class="price-badge">${priceHtml}</div>
+                <img src="${item.img}" draggable="false">
+                <div class="card-info">
+                    <div class="card-tag">${item.category.toUpperCase()}</div>
+                    <div class="card-title">${item.title}</div>
+                </div>
+            `;
+            stack.appendChild(card);
+        }
+    }
+
+    function initDrag(card, item) {
+        let startX = 0, currentX = 0, isDragging = false;
+
+        const start = (x) => { 
+            isDragging = true; 
+            startX = x; 
+            card.style.transition = 'none'; 
+        };
+
+        const move = (x) => {
+            if (!isDragging) return;
+            currentX = x - startX;
+            card.style.transform = `translateX(${currentX}px) rotate(${currentX * 0.05}deg)`;
+            const like = card.querySelector('.status-like');
+            const nope = card.querySelector('.status-nope');
+            if (currentX > 0) { 
+                like.style.opacity = currentX/100; 
+                nope.style.opacity = 0; 
+            } else { 
+                nope.style.opacity = Math.abs(currentX)/100; 
+                like.style.opacity = 0; 
+            }
+        };
+
+        const end = () => {
+            if (!isDragging) return;
+            isDragging = false;
+            card.style.transition = 'transform 0.4s ease';
+            if (currentX > 100) {
+                card.style.transform = `translateX(1000px) rotate(30deg)`;
+                addLikedTag(item.tag);
+                if (item.price === 3) userBudgetScore += 2; 
+                nextCard();
+            } 
+            else if (currentX < -100) { 
+                card.style.transform = `translateX(-1000px) rotate(-30deg)`; 
+                nextCard(); 
+            } 
+            else { 
+                card.style.transform = 'translateX(0) rotate(0)'; 
+                card.querySelector('.status-like').style.opacity = 0; 
+                card.querySelector('.status-nope').style.opacity = 0; 
+            }
+        };
+
+        card.addEventListener('mousedown', e => { 
+            e.preventDefault(); 
+            start(e.clientX); 
+            document.addEventListener('mousemove', mouseMoveHandler); 
+            document.addEventListener('mouseup', mouseUpHandler); 
+        });
+
+        function mouseMoveHandler(e) { move(e.clientX); }
+        function mouseUpHandler() { 
+            end(); 
+            document.removeEventListener('mousemove', mouseMoveHandler);
+            document.removeEventListener('mouseup', mouseUpHandler);
+        }
+
+        card.addEventListener('touchstart', e => { 
+            start(e.touches[0].clientX); 
+            document.addEventListener('touchmove', touchMoveHandler); 
+            document.addEventListener('touchend', touchEndHandler); 
+        });
+
+        function touchMoveHandler(e) { move(e.touches[0].clientX); }
+        function touchEndHandler() { 
+            end(); 
+            document.removeEventListener('touchmove', touchMoveHandler);
+            document.removeEventListener('touchend', touchEndHandler);
+        }
+    }
+
+    function nextCard() { 
+        currentIndex++; 
+        setTimeout(() => { 
+            if(currentIndex < experiences.length) renderCards(); 
+            else finishSwiping(); 
+        }, 300); 
+    }
+
+    function finishSwiping() {
+        switchSection('swiper', 'evaluation');
+    }
+
+    /* ---------- RULERS ---------- */
+    function getRulerValue(type, percentage) {
+        if (type === 'tempo') {
+            if (percentage < 33) return 'Enjoy & Relax';
+            if (percentage > 66) return 'Fast & Active';
+            return 'Medium';
+        } else if (type === 'price') {
+            if (percentage < 33) return 'Budget Friendly';
+            if (percentage > 66) return 'Luxury & Exclusive';
+            return 'Medium';
+        } else if (type === 'transportation') {
+            if (percentage < 33) return 'Walk/Scooter/Bike';
+            if (percentage > 66) return 'Taxi/Uber/Private';
+            return 'Public Transport';
+        }
+        return 'Medium';
+    }
+
+    function mapSelectToValue(type, option) {
+        const presets = {
+            tempo: { relax: 20, balanced: 50, active: 85 },
+            price: { budget: 20, medium: 50, luxury: 85 },
+            transportation: { walk: 15, rideshare: 60, private: 90 }
+        };
+        return presets[type]?.[option] ?? 50;
+    }
+
+    function mapValueToSelect(type, value) {
+        const thresholds = {
+            tempo: [30, 70],
+            price: [30, 70],
+            transportation: [25, 75]
+        };
+        const [low, high] = thresholds[type] || [30, 70];
+        if (value <= low) return type === 'transportation' ? 'walk' : type === 'price' ? 'budget' : 'relax';
+        if (value >= high) return type === 'transportation' ? 'private' : 'luxury';
+        return type === 'transportation' ? 'rideshare' : type === 'price' ? 'medium' : 'balanced';
+    }
+
+    function handleProfileSelectChange(type, option) {
+        const newValue = mapSelectToValue(type, option);
+        userPreferences[type] = newValue;
+        userProfile[type] = newValue;
+        saveProfile(userProfile);
+    }
+
+    function updateAllKnobs() {
+        const tempoSelect = document.getElementById('tempoSelect');
+        const budgetSelect = document.getElementById('budgetSelect');
+        const transportSelect = document.getElementById('transportSelect');
+        if (tempoSelect) tempoSelect.value = mapValueToSelect('tempo', userPreferences.tempo);
+        if (budgetSelect) budgetSelect.value = mapValueToSelect('price', userPreferences.price);
+        if (transportSelect) transportSelect.value = mapValueToSelect('transportation', userPreferences.transportation);
+    }
+
+    function initRulerDrag() {
+        // sliders removed
+    }
+
+    function setupEvaluationScreen() {
+        if (evaluationSetupDone) return; 
+
+        updateAllKnobs(); 
+        evaluationSetupDone = true;
+    }
+
+    function toggleTourGuide(isChecked) {
+        userPreferences.tourGuide = isChecked;
+        userProfile.tourGuide = isChecked;
+        saveProfile(userProfile);
+        updateAiUiVisibility();
+    }
+
+    function toggleTourGuideFromSettings(isChecked) {
+        toggleTourGuide(isChecked);
+        showToast('Tour guide preference updated.', 'success');
+    }
+
+    /* ---------- ITINERARY ---------- */
+    function getDaysArray(start, end) {
+        const dates = [];
+        let currentDate = new Date(start); 
+        let endDate = new Date(end);
+        
+        currentDate.setHours(0, 0, 0, 0); 
+        endDate.setHours(0, 0, 0, 0); 
+
+        while (currentDate.getTime() <= endDate.getTime()) {
+            dates.push(new Date(currentDate));
+            currentDate = new Date(currentDate.getTime() + (24 * 60 * 60 * 1000));
+        }
+        
+        return dates;
+    }
+
+    function generateItinerary() {
+        const itineraryContent = document.getElementById('itineraryContent');
+        
+        if (!selectedDates || selectedDates.length < 2) {
+            itineraryContent.innerHTML = '<div style="padding: 16px; color: var(--danger); font-size:0.86rem;">Error: Please select valid dates before planning.</div>';
+            throw new Error("Invalid dates selected.");
+        }
+
+        const dates = getDaysArray(selectedDates[0], selectedDates[1]);
+        tripDates = dates;
+        const allActivities = [...experiences];
+        const itinerary = generateMockItinerary(dates, allActivities);
+
+        currentItinerary = itinerary;
+        saveItinerary(itinerary);
+        renderItineraryUI(itinerary, dates);
+    }
+
+    function renderItineraryUI(itinerary, dates) {
+        tripDates = dates || tripDates || [];
+        const itineraryContent = document.getElementById('itineraryContent');
+        const itineraryMeta = document.getElementById('itineraryMeta');
+        const viewDayMapBtn = document.getElementById('viewDayMapBtn');
+
+        const numDays = dates.length;
+        itineraryMeta.innerHTML = `${numDays} Days | AI Guide: <strong style="color: ${userPreferences.tourGuide ? 'var(--success)' : 'var(--secondary-text)'};">${userPreferences.tourGuide ? 'ON' : 'OFF'}</strong>`;
+
+        itineraryContent.innerHTML = '';
+        
+        itinerary.forEach((dayPlan, index) => {
+            const dayDiv = document.createElement('div');
+            dayDiv.className = 'itinerary-day';
+            dayDiv.innerHTML = renderDay(dayPlan, index + 1, dates[index]); 
+            itineraryContent.appendChild(dayDiv);
+        });
+
+        if (userPreferences.tourGuide && itinerary.length > 0) {
+            showAssistant(`<strong>Day plan ready.</strong> Long-press "Arrived" or "Completed" for 2s at each stop; I'll keep you in sync, suggest nearby picks, and answer questions.`);
+        }
+        
+        if (itinerary.length > 0) {
+            currentDayMapData.dayNumber = 1;
+            currentDayMapData.activities = itinerary[0];
+            viewDayMapBtn.innerHTML = `<i class="fa-solid fa-map-location-dot"></i> Day 1 Map (${itinerary[0].length})`;
+
+            const firstDayContent = document.querySelector('.day-content');
+            if(firstDayContent) {
+                firstDayContent.classList.add('active');
+            }
+        } else {
+            viewDayMapBtn.style.display = 'none';
+        }
+
+        document.querySelectorAll('.day-header').forEach((header, index) => {
+            header.addEventListener('click', function() {
+                const content = this.nextElementSibling;
+                const dayNumber = index + 1;
+                const activities = itinerary[index];
+
+                const wasActive = content.classList.contains('active');
+                
+                document.querySelectorAll('.day-content').forEach((dc) => {
+                    dc.classList.remove('active');
+                });
+                
+                if (!wasActive) {
+                    content.classList.add('active');
+                    
+                    currentDayMapData.dayNumber = dayNumber;
+                    currentDayMapData.activities = activities;
+                    viewDayMapBtn.innerHTML = `<i class="fa-solid fa-map-location-dot"></i> Day ${dayNumber} Map (${activities.length})`;
+                } else {
+                    currentDayMapData.dayNumber = 1;
+                    currentDayMapData.activities = itinerary[0] || [];
+                    viewDayMapBtn.innerHTML = `<i class="fa-solid fa-map-location-dot"></i> Day 1 Map (${(itinerary[0] || []).length})`;
+                }
+            });
+        });
+    }
+
+    function copyItinerarySummary() {
+        if (!currentItinerary || !currentItinerary.length) {
+            showToast('Generate an itinerary first.', 'error');
+            return;
+        }
+        const summary = buildTripSummary(currentItinerary);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(summary).then(() => {
+                showToast('Copied shareable plan. Paste into chat/email.', 'success');
+            }).catch(() => showToast('Clipboard blocked.', 'error'));
+        } else {
+            showToast('Clipboard not available.', 'error');
+        }
+    }
+
+    function buildTripSummary(itinerary, dates = []) {
+        let summary = 'Trip Plan to Share:\n';
+        itinerary.forEach((day, idx) => {
+            const datePart = dates[idx] ? dates[idx].toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }) : `Day ${idx + 1}`;
+            summary += `${datePart}:\n`;
+            day.slice(0, 3).forEach(a => {
+                summary += ` - ${a.title}${a.time ? ' at ' + a.time : ''}\n`;
+            });
+        });
+        return summary;
+    }
+
+    function copyTripSummaryById(tripId) {
+        const trips = loadTrips();
+        const trip = trips.find(t => t.id === tripId);
+        if (!trip || !trip.summaryText) {
+            showToast('No summary found for this trip.', 'error');
+            return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(trip.summaryText).then(() => {
+                showToast('Trip summary copied.', 'success');
+            }).catch(() => showToast('Clipboard blocked.', 'error'));
+        } else {
+            showToast('Clipboard not available.', 'error');
+        }
+    }
+
+    function loadLastPlan() {
+        const itinerary = loadItinerary();
+        if (!itinerary) {
+            showToast('No saved plan found.', 'error');
+            return;
+        }
+
+        if (!userProfile.startDate || !userProfile.endDate) {
+            showToast('No saved dates found for the last plan.', 'error');
+            return;
+        }
+
+        const dates = getDaysArray(
+            new Date(userProfile.startDate),
+            new Date(userProfile.endDate)
+        );
+
+        currentItinerary = itinerary;
+        renderItineraryUI(itinerary, dates);
+    }
+
+    function generateMockItinerary(dates, activities) {
+        const isLuxury = userPreferences.price > 60;
+        const isFastTempo = userPreferences.tempo > 60;
+        const dailyLimit = isFastTempo ? 4 : 3;
+        
+        let itinerary = [];
+        let availableActivities = [...activities].sort(() => 0.5 - Math.random()); 
+        
+        for (let day = 0; day < dates.length; day++) {
+            let dayActivities = [];
+            let filteredActivities = availableActivities.filter(a => {
+                const matchesLuxury = isLuxury ? (a.price > 1) : true;
+                const matchesLike = likedTags.includes(a.tag);
+                const randomChance = 0.4;
+                return matchesLuxury && (matchesLike || Math.random() > randomChance); 
+            });
+            
+            for (let i = 0; i < dailyLimit && filteredActivities.length > 0; i++) {
+                const activity = filteredActivities.shift(); 
+                if (activity) {
+                    dayActivities.push(activity);
+                    availableActivities = availableActivities.filter(a => a.id !== activity.id); 
+                }
+            }
+            
+            dayActivities.sort((a, b) => (a.time || "12:00").localeCompare(b.time || "12:00"));
+            itinerary.push(dayActivities);
+        }
+        return itinerary;
+    }
+
+    function renderDay(dayPlan, dayNumber, date) {
+        const weather = simulateWeather(date);
+        const dateStr = date.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
+        
+        let activityList = '';
+
+        if (userPreferences.tourGuide && weather.desc === 'Rainy') {
+            showAssistant(`<strong>Rain alert for Day ${dayNumber}:</strong> Placeholder indoor suggestion message.`);
+        }
+
+        if (dayPlan.length === 0) {
+            activityList = `<div style="padding: 8px 0; color: var(--secondary-text); font-style: italic; font-size:0.82rem;">
+                No activities for this day. Try changing Tempo or Price sliders.
+            </div>`;
+        } else {
+            if (userPreferences.tourGuide) {
+                activityList += `<div style="padding: 8px 0; color: var(--success); font-style: italic; font-size:0.82rem;">
+                    <i class="fa-solid fa-robot"></i> AI Tour Guide is ready. Long-press "Arrived" or "Completed" for 2s to send a signal.
+                </div>`;
+            }
+            dayPlan.forEach(activity => {
+                const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activity.title + ', Chicago')}`;
+
+                activityList += `
+                    <div class="activity-item" onclick="toggleDetails(this)">
+                        
+                        <div class="activity-content-wrapper">
+                            <div style="flex-grow: 1; min-width: 0;">
+                                <div class="activity-title">${activity.title}</div>
+                                <div class="activity-duration">Est. Visit: ${activity.duration || '1 hr'}</div>
+                            </div>
+                            ${userPreferences.tourGuide ? `
+                                <div class="activity-time-group">
+                                    <button class="checkin-btn" title="Arrived (long-press 2s)" 
+                                        onmousedown="startHold('arrived', ${dayNumber}, ${activity.id}, this, event)" 
+                                        onmouseup="cancelHold(this)" onmouseleave="cancelHold(this)"
+                                        ontouchstart="startHold('arrived', ${dayNumber}, ${activity.id}, this, event)" 
+                                        ontouchend="cancelHold(this)">
+                                        <i class="fa-solid fa-flag-checkered"></i>
+                                    </button>
+                                    <div class="activity-time">${activity.time || 'TBD'}</div>
+                                    <button class="complete-btn" title="Completed (long-press 2s)" 
+                                        onmousedown="startHold('completed', ${dayNumber}, ${activity.id}, this, event)" 
+                                        onmouseup="cancelHold(this)" onmouseleave="cancelHold(this)"
+                                        ontouchstart="startHold('completed', ${dayNumber}, ${activity.id}, this, event)" 
+                                        ontouchend="cancelHold(this)">
+                                        <i class="fa-regular fa-circle-check"></i>
+                                    </button>
+                                </div>
+                            ` : `
+                                <div class="activity-time">${activity.time || 'TBD'}</div>
+                            `}
+                        </div>
+
+                        <div class="activity-details">
+                            <div class="details-info-box">
+                                <h5>About ${activity.title}</h5>
+                                <p>${activity.details}</p>
+                                
+                                <div class="insta-tip">
+                                    <i class="fa-brands fa-instagram"></i> <strong>Insta Tip:</strong> ${activity.insta || 'Look for unique angles of the skyline!'}
+                                </div>
+                                
+                                <div class="details-actions">
+                                    <a href="${mapsUrl}" target="_blank" class="action-btn btn-maps">
+                                        <i class="fa-solid fa-location-dot"></i> Navigate
+                                    </a>
+                                    <a href="https://feverup.com/en/chicago" target="_blank" class="action-btn btn-booking">
+                                        <i class="fa-solid fa-ticket"></i> Book/Reserve
+                                    </a>
+                                    <button type="button" class="action-btn btn-booking" style="color: var(--accent-gold); border-color: var(--accent-gold);" onclick="event.stopPropagation(); toggleFavorite(${activity.id});">
+                                        <i class="fa-regular fa-star"></i> Save place
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        return `
+            <div class="day-header">
+                <div>
+                    <div class="day-title">DAY ${dayNumber}</div>
+                    <div class="day-meta">${dateStr}</div>
+                </div>
+                <div class="day-header-controls">
+                    <div class="weather-info">${weather.icon} ${weather.temp}</div>
+                </div>
+            </div>
+            <div class="day-content">
+                ${activityList}
+            </div>
+        `;
+    }
+
+    function toggleDetails(item) {
+        const detailBox = item.querySelector('.activity-details');
+        document.querySelectorAll('.activity-details').forEach(box => {
+            if (box !== detailBox && box.classList.contains('open')) {
+                box.classList.remove('open');
+            }
+        });
+        detailBox.classList.toggle('open');
+    }
+
+    // ----- AI PROXY CALL -----
+    async function callAssistant(messages) {
+        const res = await fetch('http://localhost:3001/api/ai', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: 'gpt-4o',
+                messages,
+                temperature: 0.7,
+                max_tokens: 500
+            })
+        });
+        if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(`AI request failed: ${res.status} ${errText}`);
+        }
+        const data = await res.json();
+        return data.reply || '';
+    }
+
+    async function refreshSuggestedToday() {
+        const listEl = document.getElementById('suggestedTodayList');
+        const metaEl = document.getElementById('suggestedTodayMeta');
+        if (!listEl || !metaEl) return;
+        listEl.innerHTML = `<div class="hero-card-line"><span>...</span><strong>Loading suggestions...</strong></div>`;
+        metaEl.textContent = 'Loading...';
+        try {
+            const dayStops = getDayStopsWithStatus(1);
+            const daySchedule = buildDayScheduleDetailed(dayStops);
+            const todayDate = tripDates && tripDates[0] ? new Date(tripDates[0]) : new Date();
+            const weather = simulateWeather(todayDate);
+            const profileSummary = `Tempo:${userPreferences.tempo}|Price:${userPreferences.price}|Transport:${userPreferences.transportation}|TourGuide:${userPreferences.tourGuide}|Liked:${(userProfile.likedTags || []).join(', ')}`;
+            const systemContent = `You are a concise Chicago travel planner. Suggest exactly 3 stops for today with times in format "HH:MM - Title". Use current profile ${profileSummary}. Today's weather: ${weather.desc} ${weather.temp}. Planned schedule: ${daySchedule || 'none'}. Keep each line under 50 characters.`;
+            const reply = await callAssistant([
+                { role: 'system', content: systemContent },
+                { role: 'user', content: 'Give 3 updated suggestions for today with times and one-line titles.' }
+            ]);
+            const lines = reply.split('\n').map(l => l.trim()).filter(Boolean).slice(0,3);
+            if (!lines.length) throw new Error('No suggestions returned.');
+            listEl.innerHTML = lines.map(line => {
+                const timeMatch = line.match(/(\d{1,2}:\d{2})/);
+                const time = timeMatch ? timeMatch[1] : '--:--';
+                const title = line.replace(/^\s*\d{1,2}:\d{2}\s*[-–—:]\s*/, '').replace(/^[\-\d\.\)\s]+/, '').trim() || line;
+                return `<div class="hero-card-line"><span>${time}</span><strong>${title}</strong></div>`;
+            }).join('');
+            metaEl.textContent = `Profile: Tempo ${userPreferences.tempo} | Price ${userPreferences.price} | Transport ${userPreferences.transportation}`;
+        } catch (e) {
+            console.error(e);
+            listEl.innerHTML = `<div class="hero-card-line"><span>--</span><strong>Could not load suggestions.</strong></div>`;
+            metaEl.textContent = e.message || 'Error';
+            showToast(e.message || 'Suggestions failed.', 'error');
+        }
+    }
+
+    async function sendChatPrompt(userText) {
+        if (!userProfile.tourGuide) {
+            showToast('Turn on AI Tour Guide to chat.', 'info');
+            return;
+        }
+        try {
+            const profileSummary = `Tempo:${userPreferences.tempo}|Price:${userPreferences.price}|Transport:${userPreferences.transportation}|TourGuide:${userPreferences.tourGuide}|Liked:${(userProfile.likedTags || []).join(', ')}`;
+            const contextSummary = lastAiContext
+                ? `Last event: ${lastAiContext.status} - ${lastAiContext.activityTitle || ''} at ${lastAiContext.activityTime || 'TBD'} (${lastAiContext.activityDuration || 'n/a'}). Arrived at: ${lastAiContext.arrivalIso || 'n/a'}. Note: ${lastAiContext.timingNote || ''}. Details: ${lastAiContext.activityDetails || ''}. ${lastAiContext.insta ? 'Insta tip: ' + lastAiContext.insta : ''}. Next scheduled: ${lastAiContext.nextStopTitle || 'unknown'} at ${lastAiContext.nextStopTime || 'TBD'}. Today: ${lastAiContext.daySummary || ''}. Completed: ${(lastAiContext.completedTitles || []).join(', ')}. Weather: ${lastAiContext.weatherDesc || 'n/a'}. Current stop outdoor: ${lastAiContext.isCurrentOutdoor ? 'yes' : 'no'}. Next stop outdoor: ${lastAiContext.isNextOutdoor ? 'yes' : 'no'}.`
+                : 'No recent check-in.';
+            const nowStr = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            const scheduleDetail = lastAiContext?.dayScheduleDetail || 'Schedule unknown';
+            const systemContent = `You are a concise travel assistant for Chicago trips. Keep responses brief and actionable. User profile: ${profileSummary}. Context: ${contextSummary}. Current local time: ${nowStr}. Today schedule: ${scheduleDetail}. If weather is bad and next stop is outdoor, ask to swap to an indoor alternative. You cannot modify the itinerary; propose changes and ask for confirmation before reordering or moving items to another day. Prefer the next scheduled stop unless the user asks to change. Include short directions if possible.`;
+            const reply = await callAssistant([
+                { role: 'system', content: systemContent },
+                { role: 'user', content: userText }
+            ]);
+            const safeReply = reply || 'No response received.';
+            appendChatBubble(safeReply, false);
+            const chatContent = document.getElementById('assistantContent');
+            if (chatContent) {
+                const bot = document.createElement('div');
+                bot.innerHTML = `<strong>AI:</strong> ${safeReply}`;
+                bot.style.color = 'var(--secondary-text)';
+                bot.style.marginBottom = '10px';
+                chatContent.appendChild(bot);
+            }
+            showAssistant(''); // ensure drawer is open (drawer mirrors convo)
+        } catch (e) {
+            console.error(e);
+            showToast(e.message || 'AI request failed.', 'error');
+        }
+    }
+    
+    /* ---------- MAP ---------- */
+    const CHICAGO_BOUNDS = {
+        minLat: 41.79,
+        maxLat: 41.92,
+        minLng: -87.67,
+        maxLng: -87.58
+    };
+
+    function coordsToPercent(lat, lng) {
+        const latRange = CHICAGO_BOUNDS.maxLat - CHICAGO_BOUNDS.minLat;
+        const lngRange = CHICAGO_BOUNDS.maxLng - CHICAGO_BOUNDS.minLng;
+
+        const latPercent = ((lat - CHICAGO_BOUNDS.minLat) / latRange) * 100;
+        const lngPercent = ((lng - CHICAGO_BOUNDS.minLng) / lngRange) * 100;
+
+        return {
+            top: `${100 - latPercent}%`,
+            left: `${lngPercent}%`
+        };
+    }
+
+    function handleMainMapClick() {
+        showDayMap(currentDayMapData.dayNumber, currentDayMapData.activities);
+    }
+
+    function showDayMap(dayNumber, activities) {
+        const mapModal = document.getElementById('dayMapModal');
+        const mapContainer = document.getElementById('dayMapContainer');
+        const mapTitle = document.getElementById('mapModalTitle');
+        const mapLegend = document.getElementById('mapLegend');
+
+        mapTitle.textContent = `Day ${dayNumber} Itinerary Map`;
+        mapLegend.innerHTML = '';
+        
+        if (!activities || activities.length === 0) {
+            mapContainer.innerHTML = '<div style="text-align:center; padding: 40px; color: var(--secondary-text); font-size:0.86rem;">No activities found for this day.</div>';
+        } else {
+            if (!dayMapInstance) {
+                mapContainer.innerHTML = '';
+                dayMapInstance = L.map(mapContainer).setView([41.8781, -87.6298], 11);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '&copy; OpenStreetMap &copy; CartoDB'
+                }).addTo(dayMapInstance);
+            }
+            if (!dayMapMarkers) {
+                dayMapMarkers = L.layerGroup().addTo(dayMapInstance);
+            } else {
+                dayMapMarkers.clearLayers();
+            }
+
+            let legendHtml = '';
+            let bounds = [];
+            activities.forEach((activity, index) => {
+                const lat = activity.lat;
+                const lng = activity.lng;
+                if (lat && lng) {
+                    const marker = L.marker([lat, lng]).addTo(dayMapMarkers);
+                    marker.bindPopup(`${index + 1}. ${activity.title}<br>${activity.time || 'TBD'}`);
+                    bounds.push([lat, lng]);
+                }
+                legendHtml += `<span style="margin-right:12px; display: flex; align-items: center; gap: 5px;">
+                    <span style="color:var(--accent-gold); font-weight:700; background: var(--primary-bg); border-radius: 4px; padding: 1px 4px;">${index + 1}</span> 
+                    ${activity.title} (${activity.time || 'TBD'})
+                </span>`;
+            });
+            if (bounds.length) {
+                dayMapInstance.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+            } else {
+                dayMapInstance.setView([41.8781, -87.6298], 11);
+            }
+            setTimeout(() => { if (dayMapInstance) dayMapInstance.invalidateSize(); }, 80);
+            mapLegend.innerHTML = legendHtml;
+        }
+
+        mapModal.style.display = 'flex';
+    }
+    
+    const simulateWeather = (date) => { 
+        const month = date.getMonth();
+        const icons = { sun: '<i class="fa-solid fa-sun"></i>', cloud: '<i class="fa-solid fa-cloud"></i>', rain: '<i class="fa-solid fa-cloud-rain"></i>', snow: '<i class="fa-solid fa-snowflake"></i>' };
+        if (month >= 11 || month <= 2) { return { icon: icons.snow, temp: "-5&deg;C", desc: "Snowy" }; } 
+        else if (month >= 5 && month <= 8) { return { icon: icons.sun, temp: "28&deg;C", desc: "Sunny" }; } 
+        else { return Math.random() > 0.5 ? { icon: icons.cloud, temp: "15&deg;C", desc: "Cloudy" } : { icon: icons.rain, temp: "12&deg;C", desc: "Rainy" }; }
+    };
+
+    /* ---------- COMPLETE TRIP & PROFILE TRIPS ---------- */
+    function completeCurrentTrip() {
+        if (!currentItinerary || !Array.isArray(currentItinerary)) {
+            showToast('No active itinerary to complete.', 'error');
+            return;
+        }
+
+        let start = null;
+        let end = null;
+
+        if (userProfile.startDate && userProfile.endDate) {
+            start = new Date(userProfile.startDate);
+            end = new Date(userProfile.endDate);
+        } else if (selectedDates && selectedDates.length === 2) {
+            start = selectedDates[0];
+            end = selectedDates[1];
+        }
+
+        if (!start || !end) {
+            showToast('Trip dates not found. Please create a new plan.', 'error');
+            return;
+        }
+
+        const dates = getDaysArray(start, end);
+        let activitiesCount = 0;
+        currentItinerary.forEach(day => {
+            activitiesCount += (Array.isArray(day) ? day.length : 0);
+        });
+
+        const trip = {
+            id: 'trip_' + Date.now(),
+            title: `Chicago Trip - ${dates.length} Day${dates.length > 1 ? 's' : ''}`,
+            startDate: start.toISOString(),
+            endDate: end.toISOString(),
+            createdAt: new Date().toISOString(),
+            status: 'completed',
+            daysCount: dates.length,
+            activitiesCount: activitiesCount,
+            profileSnapshot: {
+                tempo: userPreferences.tempo,
+                price: userPreferences.price,
+                transportation: userPreferences.transportation,
+                tourGuide: userPreferences.tourGuide,
+                likedTags: [...likedTags]
+            }
+        };
+
+        const trips = loadTrips();
+        trips.push(trip);
+        saveTrips(trips);
+        renderTripsOnProfile();
+
+        showToast('Trip saved to your profile.', 'success');
+    }
+
+    function toggleTripDetails(id) {
+        const el = document.getElementById(`tripDetails-${id}`);
+        if (!el) return;
+        const trips = loadTrips();
+        const trip = trips.find(t => t.id === id);
+        if (!trip) return;
+        if (!el.classList.contains('hidden') && el.innerHTML) {
+            el.classList.add('hidden');
+            el.innerHTML = '';
+            return;
+        }
+        let detail = `Tempo: ${trip.profileSnapshot?.tempo || '-'} | Price: ${trip.profileSnapshot?.price || '-'} | Transport: ${trip.profileSnapshot?.transportation || '-'}`;
+        detail += `<br>Liked tags: ${(trip.profileSnapshot?.likedTags || []).join(', ') || 'none'}`;
+        el.innerHTML = detail;
+        el.classList.remove('hidden');
+    }
+
+    function deleteTrip(id) {
+        if (!confirm('Silmek istediginize emin misiniz?')) return;
+        const trips = loadTrips().filter(t => t.id !== id);
+        saveTrips(trips);
+        renderTripsOnProfile();
+        showToast('Trip deleted.', 'info');
+    }
+
+    function renderTripsOnProfile() {
+        const container = document.getElementById('previousTripsContainer');
+        const info = document.getElementById('profileTripsInfo');
+        const emptyState = document.getElementById('profileTripsEmptyState');
+        const trips = loadTrips();
+
+        if (!container || !info) return;
+
+        if (!trips || trips.length === 0) {
+            container.innerHTML = '';
+            info.textContent = 'No completed trips yet.';
+            if (emptyState) emptyState.style.display = 'block';
+            return;
+        }
+
+        info.textContent = `You have ${trips.length} completed trip${trips.length > 1 ? 's' : ''}.`;
+        if (emptyState) emptyState.style.display = 'none';
+        container.innerHTML = '';
+
+        trips
+            .slice()
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .forEach(trip => {
+                const start = new Date(trip.startDate);
+                const end = new Date(trip.endDate);
+                const startStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                const endStr = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                const createdStr = new Date(trip.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+                const safeTitle = cleanText(trip.title || 'Trip');
+
+                const div = document.createElement('div');
+                div.className = 'profile-trip-card';
+                div.innerHTML = `
+                    <div class="profile-trip-title">${safeTitle}</div>
+                    <div class="profile-trip-meta">
+                        ${startStr} - ${endStr} - ${trip.daysCount} day${trip.daysCount > 1 ? 's' : ''}, ${trip.activitiesCount} activities<br>
+                        Saved on ${createdStr}
+                    </div>
+                    <div style="margin-top:6px; display:flex; gap:8px;">
+                        <button class="btn-secondary btn" style="padding:6px 10px; font-size:0.8rem;" onclick="toggleTripDetails('${trip.id}')">View details</button>
+                        <button class="btn-secondary btn" style="padding:6px 10px; font-size:0.8rem; border-color: var(--danger); color: var(--danger);" onclick="deleteTrip('${trip.id}')">Delete</button>
+                    </div>
+                    <div class="profile-trip-details hidden" id="tripDetails-${trip.id}" style="margin-top:8px; font-size:0.82rem; color: var(--secondary-text);"></div>
+                `;
+                container.appendChild(div);
+            });
+    }
+
+    /* ---------- INITIALIZE ---------- */
+    document.addEventListener('DOMContentLoaded', () => {
+        // sanitize stored trips once to remove bad characters
+        const trips = loadTrips();
+        let tripsChanged = false;
+        const cleanedTrips = trips.map(t => {
+            const cleanTitle = cleanText(t.title || '');
+            const cleanSummary = cleanTextMultiline(t.summaryText || '');
+            if (cleanTitle !== (t.title || '') || cleanSummary !== (t.summaryText || '')) {
+                tripsChanged = true;
+                return { ...t, title: cleanTitle, summaryText: cleanSummary };
+            }
+            return t;
+        });
+        if (tripsChanged) saveTrips(cleanedTrips);
+
+        if (currentUser) {
+            populateProfileUI();
+            renderTripsOnProfile();
+            clearPlannerState();
+            showOnlySection('intro');
+        } else {
+            setAuthMode('login');
+            clearPlannerState();
+            showOnlySection('home');
+        }
+        initPasswordToggles();
+        applyTheme(settingsStore.theme || 'gold', false);
+        hydrateSettingsUI();
+        initCitySelector();
+        hydratePlannerInputsFromProfile();
+        updateAiUiVisibility();
+        refreshSuggestedToday();
+        initSignupTourGuideToggle();
+
+        try {
+            const raw = localStorage.getItem('last_creds');
+            if (raw) {
+                const creds = JSON.parse(raw);
+                const emailInput = document.getElementById('loginEmail');
+                const passInput = document.getElementById('loginPassword');
+                if (emailInput && creds.email) emailInput.value = creds.email;
+                if (passInput && creds.password) passInput.value = creds.password;
+                const remember = document.getElementById('rememberMe');
+                if (remember) remember.checked = true;
+            }
+        } catch (e) {}
+    });
+</script>
+</body>
+</html>
+
