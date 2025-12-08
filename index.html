@@ -3714,7 +3714,7 @@
 
     // ----- AI PROXY CALL -----
     async function callAssistant(messages) {
-        const res = await fetch('http://localhost:3001/api/ai', {
+        const res = await fetch('https://gezi-backend.onrender.com/api/ai', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
