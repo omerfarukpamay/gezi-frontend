@@ -1645,12 +1645,30 @@
 
                     <!-- TRAVEL DNA & BADGES -->
                     <div class="profile-card-secondary">
-                        <div class="small-label">Travel DNA</div>
-                        <div class="profile-trips-title">Your style snapshot</div>
-                        <div class="dna-grid" id="dnaStats"></div>
-                        <div class="small-label" style="margin-top:6px;">Badges</div>
-                        <div class="badge-row" id="badgeRow"></div>
-                        <div class="small-label" style="margin-top:10px;">Saved places</div>
+                    <div class="small-label">Travel DNA</div>
+                    <div class="profile-trips-title">Your style snapshot</div>
+                    <div class="dna-grid" id="dnaStats"></div>
+                    <div class="small-label" style="margin-top:10px;">Adjust your style</div>
+                    <div class="edit-profile" style="gap:8px; margin-top:6px;">
+                        <select id="dnaTempoSelect" class="text-input" onchange="handleProfileSelectChange('tempo', this.value)">
+                            <option value="relax">Tempo: Relax &amp; Enjoy</option>
+                            <option value="balanced">Tempo: Balanced</option>
+                            <option value="active">Tempo: Fast &amp; Active</option>
+                        </select>
+                        <select id="dnaBudgetSelect" class="text-input" onchange="handleProfileSelectChange('price', this.value)">
+                            <option value="budget">Budget: Budget Friendly</option>
+                            <option value="medium">Budget: Medium</option>
+                            <option value="luxury">Budget: Luxury</option>
+                        </select>
+                        <select id="dnaTransportSelect" class="text-input" onchange="handleProfileSelectChange('transportation', this.value)">
+                            <option value="walk">Transport: Walk / Bike / Scooter</option>
+                            <option value="rideshare">Transport: Uber / Lyft</option>
+                            <option value="private">Transport: Luxury / Private</option>
+                        </select>
+                    </div>
+                    <div class="small-label" style="margin-top:6px;">Badges</div>
+                    <div class="badge-row" id="badgeRow"></div>
+                    <div class="small-label" style="margin-top:10px;">Saved places</div>
                         <div class="saved-places" id="savedPlaces"></div>
                     </div>
 
@@ -1759,13 +1777,6 @@
                         <input type="email" id="editEmail" class="text-input" placeholder="Email (read-only)" disabled>
                         <div class="small-label">Avatar color</div>
                         <input type="color" id="editAvatarColor" value="#EAB308" style="width:100%; height:36px; border-radius:10px; border:1px solid rgba(55,65,81,0.8); background: transparent;">
-                        <div class="small-label" style="margin-top:8px;">Tempo / Price / Transportation</div>
-                        <input type="range" id="editTempo" min="0" max="100">
-                        <input type="range" id="editPrice" min="0" max="100">
-                        <input type="range" id="editTransportation" min="0" max="100">
-                        <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem; color: var(--secondary-text);">
-                            <input type="checkbox" id="editTourGuide" style="accent-color: var(--accent-gold); width:14px; height:14px;"> AI Tour Guide ON
-                        </label>
                         <div class="profile-actions-row">
                             <button class="btn-secondary btn" onclick="cancelProfileEdit()">Cancel</button>
                             <button class="btn" onclick="saveProfileEdit()">Save</button>
@@ -1839,39 +1850,6 @@
         </div>
         
         <div class="card-stack" id="cardStack"></div>
-    </section>
-
-    <!-- PLANNER: EVALUATION -->
-    <section id="evaluation">
-        <div class="evaluation-content">
-            <h3 style="margin-bottom: 16px; font-size:1.05rem;">Refine Your Travel Profile</h3>
-
-            <div class="profile-card-secondary" style="width:100%; gap:10px;">
-                <div class="small-label">Tempo</div>
-                <select id="tempoSelect" class="text-input" onchange="handleProfileSelectChange('tempo', this.value)">
-                    <option value="relax">Relax & Enjoy</option>
-                    <option value="balanced">Balanced</option>
-                    <option value="active">Fast & Active</option>
-                </select>
-
-                <div class="small-label">Budget</div>
-                <select id="budgetSelect" class="text-input" onchange="handleProfileSelectChange('price', this.value)">
-                    <option value="budget">Budget Friendly</option>
-                    <option value="medium">Medium</option>
-                    <option value="luxury">Luxury</option>
-                </select>
-
-                <div class="small-label">Transportation</div>
-                <select id="transportSelect" class="text-input" onchange="handleProfileSelectChange('transportation', this.value)">
-                    <option value="walk">Walk / Bike / Scooter</option>
-                    <option value="rideshare">Uber / Lyft</option>
-                    <option value="private">Luxury / Private</option>
-                </select>
-
-            </div>
-
-            <button class="btn" style="width:100%; margin-top:12px;" onclick="startProcessing()">Generate AI Itinerary</button>
-        </div>
     </section>
 
     <!-- PLANNER: PROCESSING -->
@@ -2463,11 +2441,11 @@
         const weather = document.getElementById('toggleWeatherAlerts');
         const daily = document.getElementById('toggleDailyReminder');
         const themeSelect = document.getElementById('themeSelect');
+        const tgSettings = document.getElementById('settingsTourGuideToggle');
         if (price) price.checked = !!settingsStore.priceAlerts;
         if (weather) weather.checked = !!settingsStore.weatherAlerts;
         if (daily) daily.checked = !!settingsStore.dailyReminder;
         if (themeSelect) themeSelect.value = settingsStore.theme || 'gold';
-        const tgSettings = document.getElementById('settingsTourGuideToggle');
         if (tgSettings) tgSettings.checked = !!userPreferences.tourGuide;
     }
 
@@ -2683,6 +2661,7 @@
         renderBadges();
         renderFavorites();
         fillEditForm(fullName, avatarColor);
+        updateAllKnobs();
     }
 
     /* ---------- LOGIN & SIGNUP HANDLERS ---------- */
@@ -3041,16 +3020,10 @@
         const last = document.getElementById('editLastName');
         const email = document.getElementById('editEmail');
         const color = document.getElementById('editAvatarColor');
-        const tempo = document.getElementById('editTempo');
-        const price = document.getElementById('editPrice');
-        const transportation = document.getElementById('editTransportation');
         if (first && currentUser) first.value = currentUser.firstName || '';
         if (last && currentUser) last.value = currentUser.lastName || '';
         if (email && currentUser) email.value = currentUser.email || '';
         if (color) color.value = avatarColor || '#EAB308';
-        if (tempo) tempo.value = userPreferences.tempo || 50;
-        if (price) price.value = userPreferences.price || 50;
-        if (transportation) transportation.value = userPreferences.transportation || 50;
     }
 
     function saveProfileEdit() {
@@ -3058,18 +3031,9 @@
         const first = document.getElementById('editFirstName');
         const last = document.getElementById('editLastName');
         const color = document.getElementById('editAvatarColor');
-        const tempo = document.getElementById('editTempo');
-        const price = document.getElementById('editPrice');
-        const transportation = document.getElementById('editTransportation');
         currentUser.firstName = (first?.value || '').trim() || currentUser.firstName;
         currentUser.lastName = (last?.value || '').trim() || currentUser.lastName;
         userProfile.avatarColor = color?.value || userProfile.avatarColor;
-        userPreferences.tempo = Number(tempo?.value || userPreferences.tempo);
-        userPreferences.price = Number(price?.value || userPreferences.price);
-        userPreferences.transportation = Number(transportation?.value || userPreferences.transportation);
-        userProfile.tempo = userPreferences.tempo;
-        userProfile.price = userPreferences.price;
-        userProfile.transportation = userPreferences.transportation;
         saveUser(currentUser);
         saveProfile(userProfile);
         populateProfileUI();
@@ -3169,20 +3133,13 @@
         const fromEl = document.getElementById(from);
         const toEl = document.getElementById(to);
         if (fromEl) fromEl.classList.remove('active'); 
-        
-        if (to === 'evaluation' && !evaluationSetupDone) {
-            setupEvaluationScreen();
-        }
-        if (to === 'evaluation') {
-            updateAllKnobs(); 
-        }
         setTimeout(() => {
             if (toEl) toEl.classList.add('active');
         }, 450); 
     }
 
     function startProcessing() {
-        switchSection('evaluation', 'processing');
+        switchSection('swiper', 'processing');
         document.getElementById('aiLog').innerText = "Analyzing preferences and creating itinerary...";
 
         setTimeout(() => { 
@@ -3194,7 +3151,7 @@
                 switchSection('processing', 'results'); 
             } catch (error) {
                 document.getElementById('aiLog').innerText = "ERROR: Generation failed. Returning to profile review.";
-                setTimeout(() => switchSection('processing', 'evaluation'), 1500); 
+                setTimeout(() => switchSection('processing', 'swiper'), 1500); 
             }
         }, 3000);
     }
@@ -3332,7 +3289,7 @@
     }
 
     function finishSwiping() {
-        switchSection('swiper', 'evaluation');
+        startProcessing();
     }
 
     /* ---------- RULERS ---------- */
@@ -3379,15 +3336,23 @@
         userPreferences[type] = newValue;
         userProfile[type] = newValue;
         saveProfile(userProfile);
+        renderTravelDNA();
+        updateAllKnobs();
     }
 
     function updateAllKnobs() {
         const tempoSelect = document.getElementById('tempoSelect');
         const budgetSelect = document.getElementById('budgetSelect');
         const transportSelect = document.getElementById('transportSelect');
+        const dnaTempo = document.getElementById('dnaTempoSelect');
+        const dnaBudget = document.getElementById('dnaBudgetSelect');
+        const dnaTransport = document.getElementById('dnaTransportSelect');
         if (tempoSelect) tempoSelect.value = mapValueToSelect('tempo', userPreferences.tempo);
         if (budgetSelect) budgetSelect.value = mapValueToSelect('price', userPreferences.price);
         if (transportSelect) transportSelect.value = mapValueToSelect('transportation', userPreferences.transportation);
+        if (dnaTempo) dnaTempo.value = mapValueToSelect('tempo', userPreferences.tempo);
+        if (dnaBudget) dnaBudget.value = mapValueToSelect('price', userPreferences.price);
+        if (dnaTransport) dnaTransport.value = mapValueToSelect('transportation', userPreferences.transportation);
     }
 
     function initRulerDrag() {
