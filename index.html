@@ -35,6 +35,8 @@
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Manrope', 'Inter', sans-serif; user-select: none; }
+        * { scrollbar-width: none; }
+        *::-webkit-scrollbar { width: 0; height: 0; display: none; }
         
         body {
             background-color: var(--primary-bg);
@@ -278,7 +280,8 @@
             position: relative;
             padding: 24px 16px 24px;
             width: 100%;
-            overflow: hidden;
+            overflow-x: hidden;
+            overflow-y: auto;
         }
 
         section {
@@ -345,6 +348,10 @@
             font-weight: 800;
             margin-bottom: 14px;
             line-height: 1.1;
+        }
+        #auth .intro-content {
+            max-height: calc(100vh - 80px);
+            overflow-y: auto;
         }
 
         .ai-chip {
@@ -903,9 +910,24 @@
         }
         .assistant-drawer.collapsed { transform: translateY(calc(100% - 46px)); opacity: 0.85; }
         .assistant-drawer.open { transform: translateY(0); opacity: 1; }
+        .assistant-drawer.fullscreen {
+            top: 0;
+            height: 100vh;
+            border-radius: 0;
+            transform: translateY(0) !important;
+            box-shadow: 0 -18px 48px rgba(0,0,0,0.55);
+        }
         .assistant-drawer-header { display:flex; justify-content: space-between; align-items: center; font-weight:700; color: var(--primary-text); padding: 6px 4px 0; }
         .assistant-drawer-content { flex:1; overflow-y:auto; color: var(--primary-text); font-size:0.9rem; line-height:1.4; padding: 4px 2px; }
         .assistant-close { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.2); color: var(--primary-text); padding: 4px 10px; border-radius: 10px; cursor: pointer; }
+        .assistant-drawer-actions { display:flex; flex-wrap:wrap; gap:6px; padding:6px 2px 0; }
+        .assistant-chip { border:1px solid rgba(148,163,184,0.4); background: rgba(255,255,255,0.04); color: var(--primary-text); border-radius:10px; padding:6px 10px; font-size:0.82rem; cursor:pointer; transition:0.15s ease; }
+        .assistant-chip:hover { border-color: var(--accent-gold); color: var(--accent-gold); }
+        .assistant-chip.flash { animation: chipFlash 0.35s ease; }
+        .assistant-route { display:flex; flex-direction:column; gap:4px; padding:6px 2px; font-size:0.86rem; color: var(--secondary-text); }
+        .assistant-stop { display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid rgba(148,163,184,0.25); border-radius:10px; background: rgba(255,255,255,0.02); }
+        .assistant-stop.badge { color: var(--accent-gold); font-weight:700; }
+        @keyframes chipFlash { from { box-shadow: 0 0 0 rgba(250,204,21,0.0); border-color: var(--accent-gold); } to { box-shadow: 0 0 20px rgba(250,204,21,0.3); border-color: var(--accent-gold); } }
         .chat-fab {
             position: fixed;
             right: 14px; bottom: 18px;
@@ -1915,9 +1937,10 @@
 <div id="assistantDrawer" class="assistant-drawer collapsed" style="display:none;">
         <div class="assistant-drawer-header">
         <span>Assistant</span>
-        <button class="assistant-close" onclick="hideAssistant()">Close</button>
+        <button class="assistant-close" onclick="dockAssistant()">Close</button>
     </div>
     <div class="assistant-drawer-content" id="assistantContent">Assistant is standing by.</div>
+    <div class="assistant-drawer-actions" id="assistantActions"></div>
 </div>
 <button class="chat-fab" id="chatFab" onclick="openChatModal()">
     <i class="fa-solid fa-message" style="font-size:1.2rem;"></i>
@@ -2086,6 +2109,9 @@
     let settingsStore = loadSettingsStore();
     let lastAiContext = null;
     let assistantOpen = false;
+    let assistantFullscreen = false;
+    let assistantDragStartY = null;
+    let assistantDragActive = false;
     let dayMapInstance = null;
     let dayMapMarkers = null;
     const CHECKIN_KEY = 'planner_checkins_v1';
@@ -2247,11 +2273,14 @@
         if (!userProfile.tourGuide) return;
         const drawer = document.getElementById('assistantDrawer');
         const content = document.getElementById('assistantContent');
+        const actions = document.getElementById('assistantActions');
         if (!drawer || !content) return;
         content.innerHTML = messageHtml;
+        if (actions) actions.innerHTML = '';
         drawer.classList.remove('collapsed');
         drawer.classList.add('open');
         assistantOpen = true;
+        assistantFullscreen = false;
     }
 
     function hideAssistant() {
@@ -2260,6 +2289,148 @@
         drawer.classList.remove('open');
         drawer.classList.add('collapsed');
         assistantOpen = false;
+        assistantFullscreen = false;
+    }
+
+    function renderAssistantState(context = {}) {
+        if (!userProfile.tourGuide) return;
+        const drawer = document.getElementById('assistantDrawer');
+        const content = document.getElementById('assistantContent');
+        const actions = document.getElementById('assistantActions');
+        if (!drawer || !content || !actions) return;
+
+        const { current, next, later, summary } = context;
+
+        let routeHtml = '';
+        if (current || next || (later && later.length)) {
+            routeHtml += '<div class="assistant-route">';
+            if (current) routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">Now</span><div><strong>${current.title}</strong><br><span>${current.time || 'TBD'} • ${current.duration || ''}</span></div></div>`;
+            if (next) routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">Next</span><div><strong>${next.title}</strong><br><span>${next.time || 'TBD'} • ${next.duration || ''}</span></div></div>`;
+            if (later && later.length) {
+                later.slice(0,2).forEach((item, idx) => {
+                    routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">L${idx+1}</span><div><strong>${item.title}</strong><br><span>${item.time || 'TBD'} • ${item.duration || ''}</span></div></div>`;
+                });
+            }
+            routeHtml += '</div>';
+        } else {
+            routeHtml = '<div class="assistant-route">No active stops. Generate a plan first.</div>';
+        }
+
+        content.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
+                <div><strong>Route focus</strong></div>
+                <button class="assistant-close" style="padding:4px 8px;" onclick="showAssistant()">Reset</button>
+            </div>
+            ${routeHtml}
+            <div style="margin-top:6px; font-size:0.86rem; color: var(--secondary-text);">${summary || 'Tap an action below to tweak your day.'}</div>
+        `;
+
+        actions.innerHTML = `
+            <button class="assistant-chip" onclick="skipNextStop(this)">Skip next</button>
+            <button class="assistant-chip" onclick="moveNextToTomorrow(this)">Move next to tomorrow</button>
+            <button class="assistant-chip" onclick="suggestNearbyFood(this)">Nearby food</button>
+            <button class="assistant-chip" onclick="summarizeToday(this)">Summarize today</button>
+            <button class="assistant-chip" onclick="openChatModal()">Ask the assistant</button>
+        `;
+    }
+
+    function expandAssistantFull() {
+        const drawer = document.getElementById('assistantDrawer');
+        if (!drawer) return;
+        drawer.style.transition = '';
+        drawer.style.transform = '';
+        drawer.classList.remove('collapsed');
+        drawer.classList.add('open', 'fullscreen');
+        assistantOpen = true;
+        assistantFullscreen = true;
+    }
+
+    function dockAssistant() {
+        const drawer = document.getElementById('assistantDrawer');
+        if (!drawer) return;
+        drawer.style.transition = '';
+        drawer.style.transform = '';
+        drawer.classList.remove('fullscreen');
+        drawer.classList.remove('open');
+        drawer.classList.add('collapsed');
+        assistantOpen = true;
+        assistantFullscreen = false;
+    }
+
+    function handleAssistantTap(event) {
+        if (!assistantOpen) return;
+        if (event.target.closest('button')) return;
+        if (assistantFullscreen) {
+            dockAssistant();
+        } else {
+            expandAssistantFull();
+        }
+    }
+
+    function handleAssistantPointerStart(y) {
+        if (!assistantOpen || !assistantFullscreen) return;
+        assistantDragStartY = y;
+        assistantDragActive = true;
+        const drawer = document.getElementById('assistantDrawer');
+        if (drawer) {
+            drawer.style.transition = 'transform 0s';
+        }
+    }
+
+    function handleAssistantPointerMove(y) {
+        if (!assistantDragActive || assistantDragStartY === null) return;
+        const drawer = document.getElementById('assistantDrawer');
+        if (!drawer) return;
+        const delta = Math.max(0, y - assistantDragStartY);
+        drawer.style.transform = `translateY(${delta}px)`;
+    }
+
+    function handleAssistantPointerEnd(y) {
+        if (!assistantDragActive || assistantDragStartY === null) {
+            assistantDragActive = false;
+            assistantDragStartY = null;
+            return;
+        }
+        const delta = Math.max(0, y - assistantDragStartY);
+        assistantDragActive = false;
+        assistantDragStartY = null;
+        const drawer = document.getElementById('assistantDrawer');
+        if (drawer) {
+            drawer.style.transition = '';
+            drawer.style.transform = '';
+        }
+        if (delta > 60) {
+            dockAssistant();
+        } else {
+            expandAssistantFull();
+        }
+    }
+
+    function handleAssistantTouchStart(e) {
+        const y = e.touches?.[0]?.clientY;
+        if (y !== undefined) handleAssistantPointerStart(y);
+    }
+
+    function handleAssistantTouchMove(e) {
+        const y = e.touches?.[0]?.clientY;
+        if (y !== undefined) handleAssistantPointerMove(y);
+    }
+
+    function handleAssistantTouchEnd(e) {
+        const y = e.changedTouches?.[0]?.clientY;
+        if (y !== undefined) handleAssistantPointerEnd(y);
+    }
+
+    function handleAssistantMouseDown(e) {
+        handleAssistantPointerStart(e.clientY);
+    }
+
+    function handleAssistantMouseMove(e) {
+        handleAssistantPointerMove(e.clientY);
+    }
+
+    function handleAssistantMouseUp(e) {
+        handleAssistantPointerEnd(e.clientY);
     }
 
     function appendChatBubble(text, isUser = false) {
@@ -2294,6 +2465,74 @@
         modal.classList.toggle('expanded');
     }
 
+    function buildAssistantContext() {
+        const firstDay = currentItinerary && currentItinerary[0] ? currentItinerary[0] : [];
+        const current = firstDay[0] || null;
+        const next = firstDay[1] || null;
+        const later = firstDay.slice(2);
+        const summary = next ? `Next: ${next.title} @ ${next.time || 'TBD'}.` : 'Route ready.';
+        return { current, next, later, summary };
+    }
+
+    function flashChip(el) {
+        if (!el) return;
+        el.classList.remove('flash');
+        void el.offsetWidth;
+        el.classList.add('flash');
+    }
+
+    function skipNextStop(el) {
+        if (!currentItinerary || !currentItinerary.length) { showToast('No itinerary yet.', 'info'); return; }
+        if (currentItinerary[0].length > 1) {
+            currentItinerary[0].splice(1,1);
+            saveItinerary(currentItinerary);
+            renderItineraryUI(currentItinerary, tripDates);
+            renderAssistantState(buildAssistantContext());
+            showToast('Next stop skipped.', 'info');
+            flashChip(el);
+        } else {
+            showToast('No next stop to skip.', 'info');
+        }
+    }
+
+    function moveNextToTomorrow(el) {
+        if (!currentItinerary || currentItinerary.length < 2) { showToast('Need at least 2 days.', 'info'); return; }
+        const day1 = currentItinerary[0];
+        const day2 = currentItinerary[1];
+        if (day1.length > 1) {
+            const moved = day1.splice(1,1)[0];
+            day2.unshift(moved);
+            saveItinerary(currentItinerary);
+            renderItineraryUI(currentItinerary, tripDates);
+            renderAssistantState(buildAssistantContext());
+            showToast('Moved next stop to tomorrow.', 'success');
+            flashChip(el);
+        } else {
+            showToast('No next stop to move.', 'info');
+        }
+    }
+
+    function suggestNearbyFood(el) {
+        if (!currentItinerary || !currentItinerary.length) { showToast('No itinerary yet.', 'info'); return; }
+        const all = currentItinerary.flat();
+        const food = all.find(a => (a.category || '').toLowerCase().includes('food')) || all[0];
+        if (food) {
+            const msg = `<strong>Try nearby:</strong> ${food.title} (${food.category || ''}). Ask for more options in chat.`;
+            showAssistant(msg);
+            renderAssistantState(buildAssistantContext());
+            flashChip(el);
+        }
+    }
+
+    function summarizeToday(el) {
+        if (!currentItinerary || !currentItinerary.length) { showToast('No itinerary yet.', 'info'); return; }
+        const today = currentItinerary[0];
+        const lines = today.slice(0,4).map((a,i) => `${i+1}. ${a.title}${a.time ? ' @ ' + a.time : ''}`);
+        showAssistant(`<strong>Today:</strong><br>${lines.join('<br>')}`);
+        renderAssistantState(buildAssistantContext());
+        flashChip(el);
+    }
+
     function sendChatMessage() {
         if (!userProfile.tourGuide) return;
         const input = document.getElementById('chatInput');
@@ -2311,6 +2550,20 @@
             sendChatMessage();
         }
     }
+
+    /* ---------- ASSISTANT GESTURE BINDINGS ---------- */
+    document.addEventListener('DOMContentLoaded', () => {
+        const assistantDrawer = document.getElementById('assistantDrawer');
+        if (assistantDrawer) {
+            assistantDrawer.addEventListener('click', handleAssistantTap);
+            assistantDrawer.addEventListener('touchstart', handleAssistantTouchStart);
+            assistantDrawer.addEventListener('touchmove', handleAssistantTouchMove);
+            assistantDrawer.addEventListener('touchend', handleAssistantTouchEnd);
+            assistantDrawer.addEventListener('mousedown', handleAssistantMouseDown);
+            assistantDrawer.addEventListener('mousemove', handleAssistantMouseMove);
+            assistantDrawer.addEventListener('mouseup', handleAssistantMouseUp);
+        }
+    });
 
     /* ---------- CITY & START CONTROL ---------- */
     function populateCityOptions() {
@@ -3010,6 +3263,7 @@
                 <div style="margin-top:6px; color: var(--secondary-text);">Ask me to adjust timing if you're early/late.</div>
             `;
             showAssistant(note);
+            renderAssistantState(buildAssistantContext());
         } else {
             showToast('Check-in recorded.', 'success');
         }
@@ -3032,6 +3286,7 @@
 
         if (userProfile.tourGuide) {
             showAssistant(`<strong>Completed:</strong> ${activity.title}<br><div style="margin-top:6px;">Logged. Want me to adjust timing or suggest what’s next?</div>`);
+            renderAssistantState(buildAssistantContext());
         } else {
             showToast('Marked complete.', 'success');
         }
@@ -3458,6 +3713,7 @@
         currentItinerary = itinerary;
         saveItinerary(itinerary);
         renderItineraryUI(itinerary, dates);
+        renderAssistantState(buildAssistantContext());
     }
 
     function renderItineraryUI(itinerary, dates) {
@@ -3584,6 +3840,7 @@
 
         currentItinerary = itinerary;
         renderItineraryUI(itinerary, dates);
+        renderAssistantState(buildAssistantContext());
     }
 
     function generateMockItinerary(dates, activities) {
