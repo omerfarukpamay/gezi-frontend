@@ -1604,13 +1604,17 @@
                     <div class="profile-card pulsing-glow">
                         <div class="small-label">Profile</div>
 
-                        <div class="profile-header">
-                            <div class="profile-avatar" id="profileAvatar">U</div>
-                            <div>
-                                <div class="profile-main-name" id="profileName">User</div>
-                                <div class="profile-email" id="profileEmail">user@example.com</div>
-                            </div>
+                    <div class="profile-header">
+                        <div class="profile-avatar" id="profileAvatar">U</div>
+                        <input type="file" id="profilePicInput" accept="image/*" style="display:none;" onchange="handleProfilePicSelected(event)">
+                        <div>
+                            <div class="profile-main-name" id="profileName">User</div>
+                            <div class="profile-email" id="profileEmail">user@example.com</div>
+                            <button class="btn-secondary btn" style="padding:6px 10px; font-size:0.8rem; margin-top:6px;" onclick="triggerProfilePicUpload()">
+                                <i class="fa-solid fa-image"></i>&nbsp; Add profile picture
+                            </button>
                         </div>
+                    </div>
 
                         <div class="profile-divider"></div>
 
@@ -1645,32 +1649,11 @@
 
                     <!-- TRAVEL DNA & BADGES -->
                     <div class="profile-card-secondary">
-                    <div class="small-label">Travel DNA</div>
-                    <div class="profile-trips-title">Your style snapshot</div>
-                    <div class="dna-grid" id="dnaStats"></div>
-                    <div class="small-label" style="margin-top:10px;">Adjust your style</div>
-                    <div class="edit-profile" style="gap:8px; margin-top:6px;">
-                        <select id="dnaTempoSelect" class="text-input" onchange="handleProfileSelectChange('tempo', this.value)">
-                            <option value="relax">Tempo: Relax &amp; Enjoy</option>
-                            <option value="balanced">Tempo: Balanced</option>
-                            <option value="active">Tempo: Fast &amp; Active</option>
-                        </select>
-                        <select id="dnaBudgetSelect" class="text-input" onchange="handleProfileSelectChange('price', this.value)">
-                            <option value="budget">Budget: Budget Friendly</option>
-                            <option value="medium">Budget: Medium</option>
-                            <option value="luxury">Budget: Luxury</option>
-                        </select>
-                        <select id="dnaTransportSelect" class="text-input" onchange="handleProfileSelectChange('transportation', this.value)">
-                            <option value="walk">Transport: Walk / Bike / Scooter</option>
-                            <option value="rideshare">Transport: Uber / Lyft</option>
-                            <option value="private">Transport: Luxury / Private</option>
-                        </select>
-                    </div>
                     <div class="small-label" style="margin-top:6px;">Badges</div>
                     <div class="badge-row" id="badgeRow"></div>
                     <div class="small-label" style="margin-top:10px;">Saved places</div>
-                        <div class="saved-places" id="savedPlaces"></div>
-                    </div>
+                    <div class="saved-places" id="savedPlaces"></div>
+                </div>
 
                 </div>
             </div>
@@ -1741,17 +1724,17 @@
 
             <div class="profile-layout">
                 <div class="settings-card">
-                    <div class="small-label">Data & Privacy</div>
-                    <div style="font-size:0.86rem; color:var(--secondary-text); margin-bottom:8px;">
-                        This planner stores your profile and trips only in this browser's local storage.
+                    <div class="small-label">Profile controls</div>
+                    <div class="profile-trips-title" style="margin-bottom:6px;">Edit your details</div>
+                    <div class="edit-profile">
+                        <input type="text" id="editFirstName" class="text-input" placeholder="First name">
+                        <input type="text" id="editLastName" class="text-input" placeholder="Last name">
+                        <input type="email" id="editEmail" class="text-input" placeholder="Email (read-only)" disabled>
+                        <div class="profile-actions-row">
+                            <button class="btn-secondary btn" onclick="cancelProfileEdit()">Cancel</button>
+                            <button class="btn" onclick="saveProfileEdit()">Save</button>
+                        </div>
                     </div>
-
-                    <button class="btn" style="width:100%; margin-top:4px;" onclick="resetAllData()">
-                        <i class="fa-solid fa-broom"></i>&nbsp; Reset All Local Data
-                    </button>
-                    <p style="font-size:0.75rem; color:var(--muted-text); margin-top:6px;">
-                        This will remove your saved user, preferences, itineraries, and trips from this browser.
-                    </p>
 
                     <div class="profile-divider"></div>
 
@@ -1766,22 +1749,6 @@
                             <span class="slider"></span>
                         </label>
                     </label>
-
-                    <div class="profile-divider"></div>
-
-                    <div class="small-label">Profile controls</div>
-                    <div class="profile-trips-title" style="margin-bottom:6px;">Edit your details</div>
-                    <div class="edit-profile">
-                        <input type="text" id="editFirstName" class="text-input" placeholder="First name">
-                        <input type="text" id="editLastName" class="text-input" placeholder="Last name">
-                        <input type="email" id="editEmail" class="text-input" placeholder="Email (read-only)" disabled>
-                        <div class="small-label">Avatar color</div>
-                        <input type="color" id="editAvatarColor" value="#EAB308" style="width:100%; height:36px; border-radius:10px; border:1px solid rgba(55,65,81,0.8); background: transparent;">
-                        <div class="profile-actions-row">
-                            <button class="btn-secondary btn" onclick="cancelProfileEdit()">Cancel</button>
-                            <button class="btn" onclick="saveProfileEdit()">Save</button>
-                        </div>
-                    </div>
 
                     <div class="profile-divider"></div>
             <div class="small-label">Notifications</div>
@@ -1814,6 +1781,20 @@
                         <option value="emerald">Deep Emerald</option>
                         <option value="sunset">Sunset Purple</option>
                     </select>
+
+                    <div class="profile-divider"></div>
+
+                    <div class="small-label">Data & Privacy</div>
+                    <div style="font-size:0.86rem; color:var(--secondary-text); margin-bottom:8px;">
+                        This planner stores your profile and trips only in this browser's local storage.
+                    </div>
+
+                    <button class="btn" style="width:100%; margin-top:4px;" onclick="resetAllData()">
+                        <i class="fa-solid fa-broom"></i>&nbsp; Reset All Local Data
+                    </button>
+                    <p style="font-size:0.75rem; color:var(--muted-text); margin-top:6px;">
+                        This will remove your saved user, preferences, itineraries, and trips from this browser.
+                    </p>
 
                     <button class="btn-secondary btn" style="width:100%; margin-top:10px;" onclick="openProfileTab()">
                         <i class="fa-solid fa-arrow-left"></i>&nbsp; Back to Profile
@@ -1850,6 +1831,39 @@
         </div>
         
         <div class="card-stack" id="cardStack"></div>
+    </section>
+
+    <!-- PLANNER: EVALUATION -->
+    <section id="evaluation">
+        <div class="evaluation-content">
+            <h3 style="margin-bottom: 16px; font-size:1.05rem;">Refine Your Travel Profile</h3>
+
+            <div class="profile-card-secondary" style="width:100%; gap:10px;">
+                <div class="small-label">Tempo</div>
+                <select id="tempoSelect" class="text-input" onchange="handleProfileSelectChange('tempo', this.value)">
+                    <option value="relax">Relax &amp; Enjoy</option>
+                    <option value="balanced">Balanced</option>
+                    <option value="active">Fast &amp; Active</option>
+                </select>
+
+                <div class="small-label">Budget</div>
+                <select id="budgetSelect" class="text-input" onchange="handleProfileSelectChange('price', this.value)">
+                    <option value="budget">Budget Friendly</option>
+                    <option value="medium">Medium</option>
+                    <option value="luxury">Luxury</option>
+                </select>
+
+                <div class="small-label">Transportation</div>
+                <select id="transportSelect" class="text-input" onchange="handleProfileSelectChange('transportation', this.value)">
+                    <option value="walk">Walk / Bike / Scooter</option>
+                    <option value="rideshare">Uber / Lyft</option>
+                    <option value="private">Luxury / Private</option>
+                </select>
+
+            </div>
+
+            <button class="btn" style="width:100%; margin-top:12px;" onclick="startProcessing()">Generate AI Itinerary</button>
+        </div>
     </section>
 
     <!-- PLANNER: PROCESSING -->
@@ -2639,6 +2653,7 @@
         const email = currentUser.email || 'user@example.com';
         const initial = (currentUser.firstName || 'U').charAt(0).toUpperCase();
         const avatarColor = userProfile.avatarColor || '#EAB308';
+        const avatarImage = userProfile.avatarImage || '';
 
         const profileNameEl = document.getElementById('profileName');
         const profileEmailEl = document.getElementById('profileEmail');
@@ -2648,14 +2663,21 @@
 
         if (profileNameEl) profileNameEl.textContent = fullName.toLowerCase();
         if (profileEmailEl) profileEmailEl.textContent = email;
-        if (profileAvatarEl) {
-            profileAvatarEl.textContent = initial;
-            profileAvatarEl.style.background = avatarColor;
-        }
-        if (headerAvatarEl) {
-            headerAvatarEl.textContent = initial;
-            headerAvatarEl.style.background = avatarColor;
-        }
+        const applyAvatar = (el) => {
+            if (!el) return;
+            if (avatarImage) {
+                el.style.backgroundImage = `url(${avatarImage})`;
+                el.style.backgroundSize = 'cover';
+                el.style.backgroundPosition = 'center';
+                el.textContent = '';
+            } else {
+                el.style.backgroundImage = '';
+                el.textContent = initial;
+                el.style.background = avatarColor;
+            }
+        };
+        applyAvatar(profileAvatarEl);
+        applyAvatar(headerAvatarEl);
         if (profileMenu) profileMenu.style.display = 'flex';
         renderTravelDNA();
         renderBadges();
@@ -3019,21 +3041,17 @@
         const first = document.getElementById('editFirstName');
         const last = document.getElementById('editLastName');
         const email = document.getElementById('editEmail');
-        const color = document.getElementById('editAvatarColor');
         if (first && currentUser) first.value = currentUser.firstName || '';
         if (last && currentUser) last.value = currentUser.lastName || '';
         if (email && currentUser) email.value = currentUser.email || '';
-        if (color) color.value = avatarColor || '#EAB308';
     }
 
     function saveProfileEdit() {
         if (!currentUser) return;
         const first = document.getElementById('editFirstName');
         const last = document.getElementById('editLastName');
-        const color = document.getElementById('editAvatarColor');
         currentUser.firstName = (first?.value || '').trim() || currentUser.firstName;
         currentUser.lastName = (last?.value || '').trim() || currentUser.lastName;
-        userProfile.avatarColor = color?.value || userProfile.avatarColor;
         saveUser(currentUser);
         saveProfile(userProfile);
         populateProfileUI();
@@ -3044,6 +3062,28 @@
         if (!currentUser) return;
         fillEditForm('', userProfile.avatarColor);
         showToast('Changes discarded.', 'info');
+    }
+
+    function triggerProfilePicUpload() {
+        const input = document.getElementById('profilePicInput');
+        if (input) input.click();
+    }
+
+    function handleProfilePicSelected(event) {
+        const file = event?.target?.files?.[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+            showToast('Please select an image file.', 'error');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+            userProfile.avatarImage = reader.result;
+            saveProfile(userProfile);
+            populateProfileUI();
+            showToast('Profile picture updated.', 'success');
+        };
+        reader.readAsDataURL(file);
     }
 
     function logout() {
@@ -3133,13 +3173,20 @@
         const fromEl = document.getElementById(from);
         const toEl = document.getElementById(to);
         if (fromEl) fromEl.classList.remove('active'); 
+        
+        if (to === 'evaluation' && !evaluationSetupDone) {
+            setupEvaluationScreen();
+        }
+        if (to === 'evaluation') {
+            updateAllKnobs(); 
+        }
         setTimeout(() => {
             if (toEl) toEl.classList.add('active');
         }, 450); 
     }
 
     function startProcessing() {
-        switchSection('swiper', 'processing');
+        switchSection('evaluation', 'processing');
         document.getElementById('aiLog').innerText = "Analyzing preferences and creating itinerary...";
 
         setTimeout(() => { 
@@ -3151,7 +3198,7 @@
                 switchSection('processing', 'results'); 
             } catch (error) {
                 document.getElementById('aiLog').innerText = "ERROR: Generation failed. Returning to profile review.";
-                setTimeout(() => switchSection('processing', 'swiper'), 1500); 
+                setTimeout(() => switchSection('processing', 'evaluation'), 1500); 
             }
         }, 3000);
     }
@@ -3289,7 +3336,7 @@
     }
 
     function finishSwiping() {
-        startProcessing();
+        switchSection('swiper', 'evaluation');
     }
 
     /* ---------- RULERS ---------- */
