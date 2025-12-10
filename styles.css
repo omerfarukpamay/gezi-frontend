@@ -1097,7 +1097,7 @@
             position: relative;
             border-radius: 22px;
             width: 100%;
-            max-height: 85vh; 
+            max-height: 100%; 
             overflow: hidden; 
             border: 1px solid rgba(148,163,184,0.45);
             box-shadow: 0 0 40px rgba(0,0,0,0.85);
@@ -1116,6 +1116,26 @@
             z-index: 0;
         }
         .results-container > * { position: relative; z-index: 1; }
+
+        .results-split {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            height: calc(100vh - 150px);
+        }
+        .planner-pane {
+            flex: 1;
+            min-height: 45vh;
+        }
+        .assistant-pane {
+            flex: 1;
+            min-height: 35vh;
+            background: rgba(15,23,42,0.92);
+            border: 1px solid rgba(148,163,184,0.45);
+            border-radius: 18px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+            overflow: hidden;
+        }
 
         .results-map-header {
             position: relative;
@@ -1144,6 +1164,12 @@
             gap: 8px;
             flex-wrap: wrap;
             align-items: center;
+        }
+        .results-secondary-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
         }
         .btn-ghost {
             background: linear-gradient(180deg, rgba(255,255,255,0.22), rgba(236,239,244,0.16));
@@ -1503,3 +1529,34 @@
             transform: translateX(24px);
         }
 
+        /* Assistant static pane */
+        .assistant-pane .assistant-drawer {
+            position: relative;
+            inset: auto;
+            height: 100%;
+            border-radius: 0;
+            border: none;
+            box-shadow: none;
+            transform: none !important;
+            opacity: 1;
+            background: transparent;
+            backdrop-filter: none;
+            padding: 0;
+        }
+        .assistant-pane .assistant-drawer-header {
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(148,163,184,0.25);
+        }
+        .assistant-pane .assistant-drawer-content {
+            padding: 12px;
+            background: rgba(12,18,32,0.9);
+            flex: 1;
+        }
+        .assistant-pane .assistant-drawer-actions {
+            padding: 10px 12px 12px;
+        }
+        .assistant-pane .assistant-drawer.open,
+        .assistant-pane .assistant-drawer.collapsed {
+            height: 100%;
+            transform: none;
+        }

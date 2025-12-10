@@ -471,37 +471,62 @@
 
     <!-- PLANNER: RESULTS -->
     <section id="results">
-        <div class="results-container">
-            
-            <div class="results-map-header">
-                <div class="blueprint-map"></div>
-                <div class="map-overlay-title" style="display:none;"><span id="itineraryMeta"></span></div>
-                <div class="results-top-actions">
-                    <div class="results-primary-actions">
-                        <button class="action-btn btn-booking" style="background: rgba(10, 17, 31, 0.86) !important; color: var(--accent-gold); border-color: var(--accent-gold);" id="reviewProfileBtn" onclick="reviewProfile()">
-                            <i class="fa-solid fa-sliders"></i> Refine
-                        </button>
-                        <button class="btn-ghost btn-small" id="completeTripBtn" onclick="completeCurrentTrip()">
-                            <i class="fa-solid fa-check"></i> Save Trip
-                        </button>
-                        <button class="btn-ghost btn-small" onclick="copyItinerarySummary()">
-                            <i class="fa-solid fa-share-nodes"></i> Share
-                        </button>
-                        <button class="btn-ghost btn-small" onclick="goToPlannerStart()">
-                            <i class="fa-solid fa-plus"></i> New Plan
-                        </button>
+        <div class="results-split">
+            <div class="planner-pane">
+                <div class="results-container">
+                    
+                    <div class="results-map-header">
+                        <div class="blueprint-map"></div>
+                        <div class="map-overlay-title" style="display:none;"><span id="itineraryMeta"></span></div>
+                        <div class="results-top-actions">
+                            <div class="results-primary-actions">
+                                <button class="action-btn btn-booking" style="background: rgba(10, 17, 31, 0.86) !important; color: var(--accent-gold); border-color: var(--accent-gold);" id="reviewProfileBtn" onclick="reviewProfile()">
+                                    <i class="fa-solid fa-sliders"></i> Refine
+                                </button>
+                                <button class="btn-ghost btn-small" id="completeTripBtn" onclick="completeCurrentTrip()">
+                                    <i class="fa-solid fa-check"></i> Save Trip
+                                </button>
+                                <button class="btn-ghost btn-small" onclick="copyItinerarySummary()">
+                                    <i class="fa-solid fa-share-nodes"></i> Share
+                                </button>
+                                <button class="btn-ghost btn-small" onclick="goToPlannerStart()">
+                                    <i class="fa-solid fa-plus"></i> New Plan
+                                </button>
+                            </div>
+                            <div class="results-secondary-actions">
+                                <button class="btn-ghost btn-small" onclick="openChatModal()">
+                                    <i class="fa-solid fa-message"></i>
+                                </button>
+                                <button class="btn-ghost btn-small" onclick="openPlannerTab()">
+                                    <i class="fa-solid fa-map"></i> Plan
+                                </button>
+                                <button class="btn-ghost btn-small" onclick="toggleProfileDropdown(event)">
+                                    <i class="fa-solid fa-user"></i> Me
+                                </button>
+                                <button class="action-btn btn-maps" style="background: rgba(10, 17, 31, 0.86) !important;" id="viewDayMapBtn" onclick="handleMainMapClick()">
+                                    <i class="fa-solid fa-map-location-dot"></i> Day 1 Map (0)
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                    <button class="action-btn btn-maps" style="background: rgba(10, 17, 31, 0.86) !important;" id="viewDayMapBtn" onclick="handleMainMapClick()">
-                        <i class="fa-solid fa-map-location-dot"></i> Day 1 Map (0)
-                    </button>
+
+                    <div class="day-tabs" id="dayTabs"></div>
+
+                    <div class="results-scroll-content" id="itineraryContent">
+                    </div>
+                    
                 </div>
             </div>
-
-            <div class="day-tabs" id="dayTabs"></div>
-
-            <div class="results-scroll-content" id="itineraryContent">
+            <div class="assistant-pane">
+                <div id="assistantDrawer" class="assistant-drawer assistant-static open">
+                        <div class="assistant-drawer-header">
+                        <span>Assistant</span>
+                        <button class="assistant-close" onclick="dockAssistant()">Close</button>
+                    </div>
+                    <div class="assistant-drawer-content" id="assistantContent">Assistant is standing by.</div>
+                    <div class="assistant-drawer-actions" id="assistantActions"></div>
+                </div>
             </div>
-            
         </div>
     </section>
 </main>
@@ -509,14 +534,6 @@
 <div id="toast"></div>
 
 <!-- ASSISTANT DRAWER & CHAT -->
-<div id="assistantDrawer" class="assistant-drawer collapsed" style="display:none;">
-        <div class="assistant-drawer-header">
-        <span>Assistant</span>
-        <button class="assistant-close" onclick="dockAssistant()">Close</button>
-    </div>
-    <div class="assistant-drawer-content" id="assistantContent">Assistant is standing by.</div>
-    <div class="assistant-drawer-actions" id="assistantActions"></div>
-</div>
 <div class="chat-modal" id="chatModal">
     <div class="chat-modal-header">
         <strong>AI Assistant</strong>
