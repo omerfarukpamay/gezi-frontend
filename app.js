@@ -1838,6 +1838,8 @@
             dayDiv.className = 'itinerary-day';
             dayDiv.innerHTML = renderDay(itinerary[idx], idx + 1, dates[idx]);
             itineraryContent.appendChild(dayDiv);
+            const dayContent = dayDiv.querySelector('.day-content');
+            if (dayContent) dayContent.classList.add('active');
 
             currentDayMapData.dayNumber = idx + 1;
             currentDayMapData.activities = itinerary[idx];
