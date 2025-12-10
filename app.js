@@ -1813,61 +1813,56 @@
         const itineraryContent = document.getElementById('itineraryContent');
         const itineraryMeta = document.getElementById('itineraryMeta');
         const viewDayMapBtn = document.getElementById('viewDayMapBtn');
+        const dayTabs = document.getElementById('dayTabs');
 
         const numDays = dates.length;
         itineraryMeta.innerHTML = `${numDays} Days | AI Guide: <strong style="color: ${userPreferences.tourGuide ? 'var(--success)' : 'var(--secondary-text)'};">${userPreferences.tourGuide ? 'ON' : 'OFF'}</strong>`;
 
         itineraryContent.innerHTML = '';
-        
-        itinerary.forEach((dayPlan, index) => {
+        if (dayTabs) dayTabs.innerHTML = '';
+        if (viewDayMapBtn) viewDayMapBtn.style.display = itinerary.length ? 'inline-flex' : 'none';
+
+        if (!itinerary || !itinerary.length) {
+            return;
+        }
+
+        const setActiveDay = (idx) => {
+            if (!itinerary[idx]) return;
+            if (dayTabs) {
+                Array.from(dayTabs.querySelectorAll('.day-tab')).forEach((btn, bIdx) => {
+                    btn.classList.toggle('active', bIdx === idx);
+                });
+            }
+            itineraryContent.innerHTML = '';
             const dayDiv = document.createElement('div');
             dayDiv.className = 'itinerary-day';
-            dayDiv.innerHTML = renderDay(dayPlan, index + 1, dates[index]); 
+            dayDiv.innerHTML = renderDay(itinerary[idx], idx + 1, dates[idx]);
             itineraryContent.appendChild(dayDiv);
-        });
+
+            currentDayMapData.dayNumber = idx + 1;
+            currentDayMapData.activities = itinerary[idx];
+            if (viewDayMapBtn) {
+                viewDayMapBtn.style.display = 'inline-flex';
+                viewDayMapBtn.innerHTML = `<i class="fa-solid fa-map-location-dot"></i> Day ${idx + 1} Map (${(itinerary[idx] || []).length})`;
+            }
+        };
+
+        if (dayTabs) {
+            itinerary.forEach((_, index) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'day-tab';
+                btn.textContent = `Day ${index + 1}`;
+                btn.addEventListener('click', () => setActiveDay(index));
+                dayTabs.appendChild(btn);
+            });
+        }
+
+        setActiveDay(0);
 
         if (userPreferences.tourGuide && itinerary.length > 0) {
             showAssistant(`<strong>Day plan ready.</strong> Long-press "Arrived" or "Completed" for 2s at each stop; I'll keep you in sync, suggest nearby picks, and answer questions.`);
         }
-        
-        if (itinerary.length > 0) {
-            currentDayMapData.dayNumber = 1;
-            currentDayMapData.activities = itinerary[0];
-            viewDayMapBtn.innerHTML = `<i class="fa-solid fa-map-location-dot"></i> Day 1 Map (${itinerary[0].length})`;
-
-            const firstDayContent = document.querySelector('.day-content');
-            if(firstDayContent) {
-                firstDayContent.classList.add('active');
-            }
-        } else {
-            viewDayMapBtn.style.display = 'none';
-        }
-
-        document.querySelectorAll('.day-header').forEach((header, index) => {
-            header.addEventListener('click', function() {
-                const content = this.nextElementSibling;
-                const dayNumber = index + 1;
-                const activities = itinerary[index];
-
-                const wasActive = content.classList.contains('active');
-                
-                document.querySelectorAll('.day-content').forEach((dc) => {
-                    dc.classList.remove('active');
-                });
-                
-                if (!wasActive) {
-                    content.classList.add('active');
-                    
-                    currentDayMapData.dayNumber = dayNumber;
-                    currentDayMapData.activities = activities;
-                    viewDayMapBtn.innerHTML = `<i class="fa-solid fa-map-location-dot"></i> Day ${dayNumber} Map (${activities.length})`;
-                } else {
-                    currentDayMapData.dayNumber = 1;
-                    currentDayMapData.activities = itinerary[0] || [];
-                    viewDayMapBtn.innerHTML = `<i class="fa-solid fa-map-location-dot"></i> Day 1 Map (${(itinerary[0] || []).length})`;
-                }
-            });
-        });
     }
 
     function copyItinerarySummary() {

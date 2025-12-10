@@ -1158,6 +1158,40 @@
             flex-grow: 1;
         }
 
+        .day-tabs {
+            display: flex;
+            gap: 8px;
+            padding: 10px 12px 6px;
+            overflow-x: auto;
+            position: sticky;
+            top: 0;
+            background: rgba(15,23,42,0.96);
+            border-bottom: 1px solid rgba(148,163,184,0.35);
+            z-index: 5;
+        }
+        .day-tab {
+            flex: 0 0 auto;
+            border: 1px solid rgba(148,163,184,0.45);
+            background: rgba(255,255,255,0.04);
+            color: var(--secondary-text);
+            border-radius: 12px;
+            padding: 8px 14px;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            cursor: pointer;
+            transition: all 0.18s ease;
+        }
+        .day-tab:hover {
+            color: var(--primary-text);
+            border-color: var(--accent-gold);
+        }
+        .day-tab.active {
+            color: var(--btn-text);
+            background: linear-gradient(120deg, var(--btn-bg-start), var(--btn-bg-end));
+            box-shadow: var(--btn-shadow);
+            border-color: transparent;
+        }
+
         .itinerary-day {
             background: var(--primary-bg);
             border-radius: 14px;
