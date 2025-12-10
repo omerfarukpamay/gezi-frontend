@@ -874,7 +874,7 @@
             flex-direction: column;
             gap: 8px;
             padding: 10px 12px 12px;
-            transition: transform 0.28s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.25s ease;
+            transition: transform 0.9s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.6s ease;
             z-index: 900;
         }
         .assistant-drawer.collapsed {
@@ -2029,7 +2029,63 @@
         } catch (e) { return null; }
     }
     function saveUser(user) {
-        try { localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user)); } catch (e) {}
+        if (!user) return;
+        // avoid storing sensitive fields
+        const safe = { ...user };
+        delete safe.hash;
+        delete safe.salt;
+        try { localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(safe)); } catch (e) {}
+    }
+    const API_BASE = 'https://gezi-backend.onrender.com';
+
+    function getAuthToken() {
+        try { return sessionStorage.getItem('auth_token'); } catch (e) { return null; }
+    }
+    function setSessionToken(token) {
+        try {
+            let toStore = token;
+            if (!toStore) {
+                const arr = new Uint8Array(16);
+                crypto.getRandomValues(arr);
+                toStore = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+            }
+            if (toStore) sessionStorage.setItem('auth_token', toStore);
+            return toStore;
+        } catch (e) { return null; }
+    }
+    function clearSessionToken() {
+        try { sessionStorage.removeItem('auth_token'); } catch (e) {}
+    }
+
+    async function apiRequest(path, { method = 'GET', body } = {}) {
+        const headers = { 'Content-Type': 'application/json' };
+        const token = getAuthToken();
+        if (token) headers.Authorization = `Bearer ${token}`;
+        const res = await fetch(`${API_BASE}${path}`, {
+            method,
+            headers,
+            body: body ? JSON.stringify(body) : undefined
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            const msg = data?.error || data?.message || `Request failed (${res.status})`;
+            throw new Error(msg);
+        }
+        return data;
+    }
+
+    async function hydrateSessionFromToken() {
+        const token = getAuthToken();
+        if (!token) return false;
+        try {
+            const { user } = await apiRequest('/api/me');
+            currentUser = user;
+            saveUser(user);
+            return true;
+        } catch (e) {
+            clearSessionToken();
+            return false;
+        }
     }
 
     function loadProfile() {
@@ -2088,7 +2144,7 @@
         try { localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(data)); } catch (e) {}
     }
 
-    let currentUser = loadUser();
+    let currentUser = null;
     let userProfile = loadProfile();
 
     let selectedDates = [];
@@ -2456,7 +2512,7 @@
 
         const content = document.createElement('div');
         content.className = 'bubble-text';
-        content.innerHTML = text;
+        content.textContent = text;
 
         div.appendChild(content);
         container.appendChild(div);
@@ -2583,7 +2639,7 @@
     }
 
     /* ---------- ASSISTANT GESTURE BINDINGS ---------- */
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
         const assistantDrawer = document.getElementById('assistantDrawer');
         if (assistantDrawer) {
             assistantDrawer.addEventListener('click', handleAssistantTap);
@@ -2971,7 +3027,7 @@
     }
 
     /* ---------- LOGIN & SIGNUP HANDLERS ---------- */
-    function handleLoginSubmit(event) {
+    async function handleLoginSubmit(event) {
         event.preventDefault();
 
         const emailInput = document.getElementById('loginEmail');
@@ -3007,27 +3063,19 @@
 
         if (hasError) return;
 
-        const storedUser = loadUser();
-        if (!storedUser) {
-            loginError.textContent = 'No account found. Please sign up first.';
+        try {
+            const { token, user } = await apiRequest('/api/login', {
+                method: 'POST',
+                body: { email, password }
+            });
+            setSessionToken(token);
+            currentUser = user;
+            saveUser(user);
+        } catch (err) {
+            loginError.textContent = err.message || 'Login failed.';
             return;
         }
 
-        if (storedUser.email !== email || storedUser.password !== password) {
-            loginError.textContent = 'Incorrect email or password.';
-            return;
-        }
-
-        const remember = document.getElementById('rememberMe');
-        if (remember && remember.checked) {
-            try { localStorage.setItem('remember_me', '1'); } catch (e) {}
-            try { localStorage.setItem('last_creds', JSON.stringify({ email, password })); } catch (e) {}
-        } else {
-            try { localStorage.removeItem('remember_me'); } catch (e) {}
-            try { localStorage.removeItem('last_creds'); } catch (e) {}
-        }
-
-        currentUser = storedUser;
         populateProfileUI();
         renderTripsOnProfile();
         clearPlannerState();
@@ -3035,7 +3083,7 @@
         showToast('Welcome back!', 'success');
     }
 
-    function handleRegisterSubmit(event) {
+    async function handleRegisterSubmit(event) {
         event.preventDefault();
 
         const firstNameInput = document.getElementById('firstName');
@@ -3107,20 +3155,23 @@
 
         if (hasError) return;
 
-        const newUser = {
-            firstName,
-            lastName,
-            email,
-            password,
-            createdAt: new Date().toISOString()
-        };
-
         const tourGuidePref = !!signupTourGuideToggle?.checked;
         userPreferences.tourGuide = tourGuidePref;
         userProfile.tourGuide = tourGuidePref;
 
-        currentUser = newUser;
-        saveUser(newUser);
+        try {
+            const { token, user } = await apiRequest('/api/register', {
+                method: 'POST',
+                body: { firstName, lastName, email, password }
+            });
+            setSessionToken(token);
+            currentUser = user;
+            saveUser(user);
+        } catch (err) {
+            showToast(err.message || 'Sign up failed.', 'error');
+            return;
+        }
+
         populateProfileUI();
         renderTripsOnProfile();
         clearPlannerState();
@@ -3375,7 +3426,7 @@
     function logout() {
         currentUser = null;
         try { localStorage.removeItem(USER_STORAGE_KEY); } catch (e) {}
-        try { localStorage.removeItem('remember_me'); localStorage.removeItem('last_creds'); } catch (e) {}
+        clearSessionToken();
         const profileMenu = document.getElementById('profileMenu');
         if (profileMenu) profileMenu.style.display = 'none';
         clearPlannerState();
@@ -4014,7 +4065,7 @@
 
     // ----- AI PROXY CALL -----
     async function callAssistant(messages) {
-        const res = await fetch('https://gezi-backend.onrender.com/api/ai', {
+        const res = await fetch(`${API_BASE}/api/ai`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -4085,19 +4136,24 @@
             ]);
             const safeReply = reply || 'No response received.';
             appendChatBubble(safeReply, false);
-            const chatContent = document.getElementById('assistantContent');
-            if (chatContent) {
-                const bot = document.createElement('div');
-                bot.innerHTML = `<strong>AI:</strong> ${safeReply}`;
-                bot.style.color = 'var(--secondary-text)';
-                bot.style.marginBottom = '10px';
-                chatContent.appendChild(bot);
-            }
-            showAssistant(''); // ensure drawer is open (drawer mirrors convo)
-        } catch (e) {
-            console.error(e);
-            showToast(e.message || 'AI request failed.', 'error');
+        const chatContent = document.getElementById('assistantContent');
+        if (chatContent) {
+            const bot = document.createElement('div');
+            const label = document.createElement('strong');
+            label.textContent = 'AI: ';
+            const message = document.createElement('span');
+            message.textContent = safeReply;
+            bot.appendChild(label);
+            bot.appendChild(message);
+            bot.style.color = 'var(--secondary-text)';
+            bot.style.marginBottom = '10px';
+            chatContent.appendChild(bot);
         }
+        showAssistant(''); // ensure drawer is open (drawer mirrors convo)
+    } catch (e) {
+        console.error(e);
+        showToast(e.message || 'AI request failed.', 'error');
+    }
     }
     
     /* ---------- MAP ---------- */
@@ -4316,7 +4372,7 @@
     }
 
     /* ---------- INITIALIZE ---------- */
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
         // sanitize stored trips once to remove bad characters
         const trips = loadTrips();
         let tripsChanged = false;
@@ -4331,12 +4387,23 @@
         });
         if (tripsChanged) saveTrips(cleanedTrips);
 
-        if (currentUser) {
+        let authed = false;
+        authed = await hydrateSessionFromToken();
+        if (!authed) {
+            const stored = loadUser();
+            if (stored) {
+                currentUser = stored;
+                authed = true;
+            }
+        }
+
+        if (authed) {
             populateProfileUI();
             renderTripsOnProfile();
             clearPlannerState();
             showOnlySection('intro');
         } else {
+            currentUser = null;
             setAuthMode('login');
             clearPlannerState();
             showOnlySection('home');
@@ -4349,19 +4416,6 @@
         updateAiUiVisibility();
         refreshSuggestedToday();
         initSignupTourGuideToggle();
-
-        try {
-            const raw = localStorage.getItem('last_creds');
-            if (raw) {
-                const creds = JSON.parse(raw);
-                const emailInput = document.getElementById('loginEmail');
-                const passInput = document.getElementById('loginPassword');
-                if (emailInput && creds.email) emailInput.value = creds.email;
-                if (passInput && creds.password) passInput.value = creds.password;
-                const remember = document.getElementById('rememberMe');
-                if (remember) remember.checked = true;
-            }
-        } catch (e) {}
     });
 </script>
 </body>
