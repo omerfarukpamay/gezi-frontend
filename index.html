@@ -4,13 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Chicago AI Planner | Auth + Profile + Planner</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://npmcdn.com https://unpkg.com; img-src 'self' data: https://images.unsplash.com https://*.basemaps.cartocdn.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; connect-src 'self' https://gezi-backend.onrender.com https://*.basemaps.cartocdn.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self' https://gezi-backend.onrender.com;">
     
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous">
     
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <link rel="stylesheet" href="https://npmcdn.com/flatpickr/dist/themes/dark.css">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" integrity="sha384-RkASv+6KfBMW9eknReJIJ6b3UnjKOKC5bOUaNgIY778NFbQ8MtWq9Lr/khUgqtTt" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://npmcdn.com/flatpickr/dist/themes/dark.css" integrity="sha384-heUUtXw0Djj2DElfLOVPlASSWFKNL3JDY6s3FEqQD03GYyWOeophY5DsfEG40sYX" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgo=">
 
     <style>
         :root {
@@ -37,9 +39,10 @@
             --glass-shadow: 0 10px 30px rgba(0,0,0,0.35);
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Manrope', 'Inter', sans-serif; user-select: none; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Manrope', 'Inter', sans-serif; }
         * { scrollbar-width: none; }
         *::-webkit-scrollbar { width: 0; height: 0; display: none; }
+        button, .btn, .auth-toggle-btn, .chat-action, .chat-send { user-select: none; }
         
         body {
             background-color: var(--primary-bg);
@@ -1949,22 +1952,6 @@
         <button class="chat-send" onclick="sendChatMessage()">Send</button>
     </div>
 </div>
-<div class="chat-modal" id="chatModal">
-    <div class="chat-modal-header">
-        <strong>AI Assistant</strong>
-        <div style="display:flex; gap:6px;">
-            <button class="assistant-close" onclick="toggleChatSize()" title="Toggle size"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
-            <button class="assistant-close" onclick="closeChatModal()">Close</button>
-        </div>
-    </div>
-    <div class="chat-modal-body" id="chatMessages"></div>
-    <div class="chat-modal-footer">
-        <input class="chat-input" id="chatInput" placeholder="Ask for tips or tweaks..." onkeydown="handleChatKeydown(event)" />
-        <button class="chat-action" title="Record voice (send to AI later)"><i class="fa-solid fa-microphone"></i></button>
-        <button class="chat-action" title="Attach photo"><i class="fa-solid fa-camera"></i></button>
-        <button class="chat-send" onclick="sendChatMessage()">Send</button>
-    </div>
-</div>
 
 <!-- DAY MAP MODAL -->
 <div id="dayMapModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(3, 7, 18, 0.96); backdrop-filter: blur(16px); z-index: 1000; display: none; justify-content: center; align-items: center; padding: 20px;">
@@ -1985,8 +1972,8 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr" integrity="sha384-5JqMv4L/Xa0hfvtF06qboNdhvuYXUku9ZrhZh3bSk8VXF0A/RuSLHpLsSV9Zqhl6" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
 <script>
     /* --------- DATA: 3 TEST EXPERIENCES ---------- */
     const experiences = [
