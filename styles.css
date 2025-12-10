@@ -1124,9 +1124,34 @@
             border-radius: 22px 22px 0 0;
             border-bottom: 1px dashed rgba(148, 163, 184, 0.32);
         }
+        .results-top-actions {
+            position: absolute;
+            inset: auto 10px 10px 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            z-index: 20;
+        }
+        .results-primary-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .btn-ghost {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(148,163,184,0.35);
+            color: var(--secondary-text);
+        }
+        .btn-ghost:hover {
+            color: var(--primary-text);
+            border-color: var(--accent-gold);
+        }
         .btn-small {
-            padding: 10px 14px;
-            font-size: 0.88rem;
+            padding: 6px 10px;
+            font-size: 0.82rem;
         }
 
         .blueprint-map {
@@ -1156,6 +1181,22 @@
             padding: 18px 16px 0 16px;
             overflow-y: auto; 
             flex-grow: 1;
+        }
+        .results-actions {
+            padding: 6px 10px 8px;
+            background: rgba(15,23,42,0.92);
+            border-top: 1px solid rgba(55,65,81,0.85);
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+        .results-actions .btn,
+        .results-actions .btn-small {
+            width: auto;
+            min-width: 120px;
+            padding: 6px 10px;
+            font-size: 0.82rem;
         }
 
         .day-tabs {

@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
     <link rel="icon" href="data:image/png;base64,iVBORw0KGgo=">
 
-    <link rel="stylesheet" href="styles.css?v=2">
+    <link rel="stylesheet" href="styles.css?v=3">
 </head>
 <body>
 
@@ -476,16 +476,24 @@
             <div class="results-map-header">
                 <div class="blueprint-map"></div>
                 <div class="map-overlay-title" style="display:none;"><span id="itineraryMeta"></span></div>
-                <div style="position: absolute; bottom: 10px; left: 10px; right: 10px; z-index: 20; display: flex; justify-content: space-between; align-items: center;">
-                    
-                    <button class="action-btn btn-booking" style="background: rgba(10, 17, 31, 0.86) !important; color: var(--accent-gold); border-color: var(--accent-gold);" id="reviewProfileBtn" onclick="reviewProfile()">
-                        <i class="fa-solid fa-sliders"></i> Refine My Profile
-                    </button>
-
+                <div class="results-top-actions">
+                    <div class="results-primary-actions">
+                        <button class="action-btn btn-booking" style="background: rgba(10, 17, 31, 0.86) !important; color: var(--accent-gold); border-color: var(--accent-gold);" id="reviewProfileBtn" onclick="reviewProfile()">
+                            <i class="fa-solid fa-sliders"></i> Refine
+                        </button>
+                        <button class="btn-ghost btn-small" id="completeTripBtn" onclick="completeCurrentTrip()">
+                            <i class="fa-solid fa-check"></i> Save Trip
+                        </button>
+                        <button class="btn-ghost btn-small" onclick="copyItinerarySummary()">
+                            <i class="fa-solid fa-share-nodes"></i> Share
+                        </button>
+                        <button class="btn-ghost btn-small" onclick="goToPlannerStart()">
+                            <i class="fa-solid fa-plus"></i> New Plan
+                        </button>
+                    </div>
                     <button class="action-btn btn-maps" style="background: rgba(10, 17, 31, 0.86) !important;" id="viewDayMapBtn" onclick="handleMainMapClick()">
                         <i class="fa-solid fa-map-location-dot"></i> Day 1 Map (0)
                     </button>
-
                 </div>
             </div>
 
@@ -494,13 +502,6 @@
             <div class="results-scroll-content" id="itineraryContent">
             </div>
             
-            <div class="results-actions" style="padding:10px 12px 14px; background:rgba(15,23,42,0.92); border-top: 1px solid rgba(55,65,81,0.85); text-align: center; display:grid; gap:8px;">
-                <button class="btn btn-small" id="completeTripBtn" style="width:100%;" onclick="completeCurrentTrip()">
-                    Complete &amp; Save Trip
-                </button>
-                <button class="btn btn-small" style="width:100%;" onclick="copyItinerarySummary()">Share My Plan</button>
-                <button class="btn btn-small" style="width:100%;" onclick="goToPlannerStart()">Start a New Plan</button>
-            </div>
         </div>
     </section>
 </main>
@@ -554,7 +555,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/flatpickr" integrity="sha384-5JqMv4L/Xa0hfvtF06qboNdhvuYXUku9ZrhZh3bSk8VXF0A/RuSLHpLsSV9Zqhl6" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
-<script src="app.js?v=2"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>
 
