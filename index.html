@@ -32,6 +32,9 @@
             --btn-text: #030712;
             --btn-shadow: 0 14px 35px rgba(250, 204, 21, 0.65);
             --btn-shadow-strong: 0 18px 50px rgba(250, 204, 21, 0.85);
+            --glass-bg: rgba(255,255,255,0.04);
+            --glass-border: rgba(255,255,255,0.18);
+            --glass-shadow: 0 10px 30px rgba(0,0,0,0.35);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Manrope', 'Inter', sans-serif; user-select: none; }
@@ -138,50 +141,7 @@
         }
 
         /* TAB BAR (PLAN / PROFILE) */
-        .tab-nav {
-            position: relative;
-            display: flex;
-            background: rgba(15,23,42,0.92);
-            border-radius: 999px;
-            padding: 4px;
-            border: 1px solid rgba(148,163,184,0.6);
-            overflow: hidden;
-        }
-        .tab-nav::before {
-            content: '';
-            position: absolute;
-            top: 4px;
-            left: var(--tab-pill-left, 4px);
-            width: var(--tab-pill-width, 50%);
-            height: calc(100% - 8px);
-            background: radial-gradient(circle at top left, #FEF9C3, #FACC15);
-            border-radius: 999px;
-            box-shadow: 0 10px 30px rgba(250,204,21,0.45);
-            transition: all 0.25s ease;
-            z-index: 0;
-        }
-        .tab-btn {
-            border: none;
-            background: transparent;
-            color: var(--secondary-text);
-            font-size: 0.8rem;
-            padding: 5px 12px;
-            border-radius: 999px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            cursor: pointer;
-            transition: 0.18s ease;
-            position: relative;
-            z-index: 1;
-        }
-        .tab-btn i {
-            font-size: 0.8rem;
-        }
-        .tab-btn.active {
-            color: #030712;
-            font-weight: 700;
-        }
+        /* Tab nav removed */
 
         /* HEADER PROFILE DROPDOWN */
         .profile-menu {
@@ -363,24 +323,30 @@
         }
 
         .btn {
-            background: linear-gradient(135deg, var(--btn-bg-start), var(--btn-bg-end));
-            color: var(--btn-text);
-            border: 1px solid rgba(255,255,255,0.12);
-            padding: 12px 26px;
-            border-radius: 999px;
+            background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+            color: var(--primary-text);
+            border: 1px solid var(--glass-border);
+            padding: 12px 22px;
+            border-radius: 14px;
             font-size: 0.95rem;
             font-weight: 700;
             cursor: pointer;
-            box-shadow: var(--btn-shadow);
-            transition: 0.22s ease;
-            letter-spacing: 0.02em;
+            box-shadow: var(--glass-shadow);
+            transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+            backdrop-filter: blur(12px) saturate(140%);
+            letter-spacing: 0.01em;
         }
         .btn:hover { 
             transform: translateY(-2px); 
-            box-shadow: var(--btn-shadow-strong, var(--btn-shadow));
+            box-shadow: 0 16px 36px rgba(0,0,0,0.45);
+            border-color: rgba(255,255,255,0.28);
+        }
+        .btn:active { 
+            transform: translateY(0); 
+            box-shadow: 0 8px 18px rgba(0,0,0,0.4);
         }
         .btn:disabled { 
-            background: #4B5563; 
+            background: rgba(255,255,255,0.05); 
             color: #9CA3AF;
             cursor: not-allowed; 
             box-shadow: none; 
@@ -388,16 +354,19 @@
         }
 
         .btn-secondary {
-            background: rgba(15, 23, 42, 0.95);
+            background: var(--glass-bg);
             color: var(--secondary-text);
-            border-radius: 999px;
-            border: 1px solid rgba(148, 163, 184, 0.6);
-            box-shadow: 0 0 0 rgba(0,0,0,0);
+            border-radius: 14px;
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+            backdrop-filter: blur(10px) saturate(140%);
         }
         .btn-secondary:hover {
-            background: rgba(24, 35, 58, 0.98);
-            box-shadow: 0 10px 35px rgba(15,23,42,0.9);
+            background: rgba(255,255,255,0.08);
+            box-shadow: 0 14px 32px rgba(0,0,0,0.4);
             transform: translateY(-1px);
+            color: var(--primary-text);
+            border-color: rgba(255,255,255,0.28);
         }
         /* HOME */
         #home {
@@ -895,7 +864,7 @@
         .assistant-drawer {
             position: fixed;
             left: 0; right: 0; bottom: 0;
-            height: 28vh;
+            height: 20vh;
             background: rgba(12, 18, 32, 0.95);
             backdrop-filter: blur(18px);
             border-top: 1px solid rgba(103,232,249,0.55);
@@ -905,11 +874,26 @@
             flex-direction: column;
             gap: 8px;
             padding: 10px 12px 12px;
-            transition: transform 0.3s ease, opacity 0.3s ease;
-            z-index: 180;
+            transition: transform 0.28s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.25s ease;
+            z-index: 900;
         }
-        .assistant-drawer.collapsed { transform: translateY(calc(100% - 46px)); opacity: 0.85; }
-        .assistant-drawer.open { transform: translateY(0); opacity: 1; }
+        .assistant-drawer.collapsed {
+            display: flex;
+            height: 46px;
+            overflow: hidden;
+            padding: 6px 10px;
+            opacity: 0.9;
+            transform: translateY(calc(100% - 46px));
+        }
+        .assistant-drawer.collapsed .assistant-drawer-content,
+        .assistant-drawer.collapsed .assistant-drawer-actions { display: none; }
+        .assistant-drawer.open {
+            transform: translateY(0);
+            opacity: 1;
+            height: 20vh;
+            display: flex;
+            overflow: hidden;
+        }
         .assistant-drawer.fullscreen {
             top: 0;
             height: 100vh;
@@ -925,38 +909,44 @@
         .assistant-chip:hover { border-color: var(--accent-gold); color: var(--accent-gold); }
         .assistant-chip.flash { animation: chipFlash 0.35s ease; }
         .assistant-route { display:flex; flex-direction:column; gap:4px; padding:6px 2px; font-size:0.86rem; color: var(--secondary-text); }
-        .assistant-stop { display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid rgba(148,163,184,0.25); border-radius:10px; background: rgba(255,255,255,0.02); }
+        .assistant-stop { display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid var(--glass-border); border-radius:12px; background: rgba(255,255,255,0.04); backdrop-filter: blur(10px); }
         .assistant-stop.badge { color: var(--accent-gold); font-weight:700; }
         @keyframes chipFlash { from { box-shadow: 0 0 0 rgba(250,204,21,0.0); border-color: var(--accent-gold); } to { box-shadow: 0 0 20px rgba(250,204,21,0.3); border-color: var(--accent-gold); } }
         .chat-fab {
-            position: fixed;
-            right: 14px; bottom: 18px;
-            width: 48px; height: 48px;
-            border-radius: 50%;
-            border: none;
-            background: radial-gradient(circle at top left, #FEF9C3, #FACC15);
-            color: #0B1020;
-            box-shadow: 0 12px 28px rgba(0,0,0,0.35);
+            position: static;
+            right: auto; bottom: auto;
+            width: auto; height: auto;
+            border-radius: 14px;
+            border: 1px solid var(--glass-border);
+            background: var(--glass-bg);
+            color: var(--primary-text);
+            box-shadow: var(--glass-shadow);
             cursor: pointer;
             z-index: 200;
-            display: none;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.15rem;
+            gap: 6px;
+            padding: 8px 12px;
+            font-size: 0.9rem;
+            backdrop-filter: blur(10px) saturate(140%);
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
         }
+        .chat-fab:hover { transform: translateY(-1px); box-shadow: 0 12px 28px rgba(0,0,0,0.35); border-color: rgba(255,255,255,0.25); }
+        .chat-fab:active { transform: translateY(0); box-shadow: 0 8px 18px rgba(0,0,0,0.3); }
         .chat-modal {
             position: fixed;
             right: 14px; bottom: 74px;
             width: 280px;
             max-height: 360px;
-            background: radial-gradient(circle at 20% 20%, rgba(103,232,249,0.08), transparent 40%), rgba(12,18,32,0.96);
-            border: 1px solid rgba(103,232,249,0.35);
-            border-radius: 14px;
-            box-shadow: 0 16px 40px rgba(0,0,0,0.55);
+            background: rgba(12,18,32,0.92);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            box-shadow: 0 18px 44px rgba(0,0,0,0.55);
             display: none;
             flex-direction: column;
-            z-index: 210;
+            z-index: 1100;
+            backdrop-filter: blur(14px) saturate(150%);
         }
         .chat-modal.expanded { 
             width: 400px; 
@@ -967,15 +957,15 @@
             bottom: 84px; 
         }
         .chat-modal.open { display: flex; }
-        .chat-modal-header, .chat-modal-footer { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-        .chat-modal-footer { border-bottom: none; border-top: 1px solid rgba(255,255,255,0.08); display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 8px; background: rgba(255,255,255,0.02); border-radius: 0 0 14px 14px; }
+        .chat-modal-header, .chat-modal-footer { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; gap: 8px; background: rgba(255,255,255,0.03); }
+        .chat-modal-footer { border-bottom: none; border-top: 1px solid rgba(255,255,255,0.08); display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 8px; background: rgba(255,255,255,0.04); border-radius: 0 0 16px 16px; }
         .chat-modal-body { padding: 10px 12px; flex: 1; min-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
         .chat-bubble { padding: 8px 10px; border-radius: 12px; font-size: 0.9rem; line-height: 1.4; max-width: 88%; }
         .chat-bubble.me { margin-left: auto; background: rgba(250,204,21,0.15); border: 1px solid rgba(250,204,21,0.45); color: var(--primary-text); }
         .chat-bubble.ai { margin-right: auto; background: rgba(255,255,255,0.06); border: 1px solid rgba(148,163,184,0.25); color: var(--primary-text); }
         .chat-bubble, .bubble-text { user-select: text !important; }
-        .chat-input { flex: 1; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(148,163,184,0.35); background: rgba(15,23,42,0.92); color: var(--primary-text); outline: none; width: 100%; }
-        .chat-send { border: none; padding: 8px 10px; border-radius: 10px; background: linear-gradient(135deg, #FEF9C3, #FACC15); color: #0B1020; font-weight: 700; cursor: pointer; }
+        .chat-input { flex: 1; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.04); color: var(--primary-text); outline: none; width: 100%; }
+        .chat-send { border: none; padding: 8px 12px; border-radius: 12px; background: linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,255,255,0.08)); color: var(--primary-text); font-weight: 700; cursor: pointer; border: 1px solid var(--glass-border); }
         .chat-action {
             border: 1px solid rgba(148,163,184,0.35);
             background: rgba(255,255,255,0.06);
@@ -1451,14 +1441,12 @@
         <div class="logo" onclick="openHome()">Chicago<span>AI</span> Planner</div>
     </div>
     <div class="header-right">
-        <div class="tab-nav">
-            <button class="tab-btn active" id="tab-plan" onclick="openPlannerTab()">
-                <i class="fa-solid fa-map"></i> Plan
-            </button>
-            <button class="tab-btn" id="tab-profile" onclick="openProfileTab()">
-                <i class="fa-regular fa-user"></i> Profile
-            </button>
-        </div>
+        <button class="chat-fab" id="chatFab" onclick="openChatModal()">
+            <i class="fa-solid fa-message" style="font-size:1rem;"></i>
+        </button>
+        <button class="btn-secondary btn" style="padding:6px 10px; font-size:0.85rem;" onclick="openPlannerTab()">
+            <i class="fa-solid fa-map"></i> Plan
+        </button>
 
         <div class="profile-menu" id="profileMenu">
             <button class="profile-menu-trigger" onclick="toggleProfileDropdown(event)">
@@ -1466,6 +1454,9 @@
                 <i class="fa-solid fa-chevron-down"></i>
             </button>
             <div class="profile-menu-dropdown" id="profileDropdown">
+                <button class="dropdown-item" onclick="openProfileFromMenu()">
+                    <i class="fa-regular fa-user"></i><span>Profile</span>
+                </button>
                 <button class="dropdown-item" onclick="openPastTripsFromMenu()">
                     <i class="fa-solid fa-suitcase-rolling"></i><span>Past Trips</span>
                 </button>
@@ -1942,9 +1933,22 @@
     <div class="assistant-drawer-content" id="assistantContent">Assistant is standing by.</div>
     <div class="assistant-drawer-actions" id="assistantActions"></div>
 </div>
-<button class="chat-fab" id="chatFab" onclick="openChatModal()">
-    <i class="fa-solid fa-message" style="font-size:1.2rem;"></i>
-</button>
+<div class="chat-modal" id="chatModal">
+    <div class="chat-modal-header">
+        <strong>AI Assistant</strong>
+        <div style="display:flex; gap:6px;">
+            <button class="assistant-close" onclick="toggleChatSize()" title="Toggle size"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
+            <button class="assistant-close" onclick="closeChatModal()">Close</button>
+        </div>
+    </div>
+    <div class="chat-modal-body" id="chatMessages"></div>
+    <div class="chat-modal-footer">
+        <input class="chat-input" id="chatInput" placeholder="Ask for tips or tweaks..." onkeydown="handleChatKeydown(event)" />
+        <button class="chat-action" title="Record voice (send to AI later)"><i class="fa-solid fa-microphone"></i></button>
+        <button class="chat-action" title="Attach photo"><i class="fa-solid fa-camera"></i></button>
+        <button class="chat-send" onclick="sendChatMessage()">Send</button>
+    </div>
+</div>
 <div class="chat-modal" id="chatModal">
     <div class="chat-modal-header">
         <strong>AI Assistant</strong>
@@ -2265,7 +2269,7 @@
         const modal = document.getElementById('chatModal');
         const shouldShow = !!userProfile.tourGuide;
         if (drawer) drawer.style.display = shouldShow ? 'flex' : 'none';
-        if (fab) fab.style.display = shouldShow ? 'flex' : 'none';
+        if (fab) fab.style.display = 'flex';
         if (!shouldShow && modal) modal.classList.remove('open');
     }
 
@@ -2277,7 +2281,8 @@
         if (!drawer || !content) return;
         content.innerHTML = messageHtml;
         if (actions) actions.innerHTML = '';
-        drawer.classList.remove('collapsed');
+        drawer.style.display = 'flex';
+        drawer.classList.remove('collapsed', 'fullscreen');
         drawer.classList.add('open');
         assistantOpen = true;
         assistantFullscreen = false;
@@ -2286,8 +2291,9 @@
     function hideAssistant() {
         const drawer = document.getElementById('assistantDrawer');
         if (!drawer) return;
-        drawer.classList.remove('open');
+        drawer.classList.remove('open', 'fullscreen');
         drawer.classList.add('collapsed');
+        drawer.style.display = 'flex';
         assistantOpen = false;
         assistantFullscreen = false;
     }
@@ -2339,6 +2345,7 @@
         if (!drawer) return;
         drawer.style.transition = '';
         drawer.style.transform = '';
+        drawer.style.display = 'flex';
         drawer.classList.remove('collapsed');
         drawer.classList.add('open', 'fullscreen');
         assistantOpen = true;
@@ -2350,16 +2357,23 @@
         if (!drawer) return;
         drawer.style.transition = '';
         drawer.style.transform = '';
-        drawer.classList.remove('fullscreen');
-        drawer.classList.remove('open');
+        drawer.classList.remove('fullscreen', 'open');
         drawer.classList.add('collapsed');
-        assistantOpen = true;
+        drawer.style.display = 'flex';
+        assistantOpen = false;
         assistantFullscreen = false;
     }
 
     function handleAssistantTap(event) {
-        if (!assistantOpen) return;
+        const drawer = document.getElementById('assistantDrawer');
+        if (!drawer) return;
         if (event.target.closest('button')) return;
+        if (!assistantOpen) {
+            showAssistant();
+            renderAssistantState(buildAssistantContext());
+            expandAssistantFull();
+            return;
+        }
         if (assistantFullscreen) {
             dockAssistant();
         } else {
@@ -2404,6 +2418,7 @@
         } else {
             expandAssistantFull();
         }
+        renderAssistantState(buildAssistantContext());
     }
 
     function handleAssistantTouchStart(e) {
@@ -2449,7 +2464,6 @@
     }
 
     function openChatModal() {
-        if (!userProfile.tourGuide) return;
         const modal = document.getElementById('chatModal');
         if (modal) modal.classList.add('open');
     }
@@ -2463,6 +2477,24 @@
         const modal = document.getElementById('chatModal');
         if (!modal) return;
         modal.classList.toggle('expanded');
+    }
+
+    function sendChatMessage() {
+        if (!userProfile.tourGuide) return;
+        const input = document.getElementById('chatInput');
+        if (!input) return;
+        const text = input.value.trim();
+        if (!text) return;
+        appendChatBubble(text, true);
+        input.value = '';
+        sendChatPrompt(text);
+    }
+
+    function handleChatKeydown(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendChatMessage();
+        }
     }
 
     function buildAssistantContext() {
@@ -2534,7 +2566,6 @@
     }
 
     function sendChatMessage() {
-        if (!userProfile.tourGuide) return;
         const input = document.getElementById('chatInput');
         if (!input) return;
         const text = input.value.trim();
