@@ -1816,7 +1816,17 @@ function populateAssistantActivities() {
         }
     }
 
-        function isBooked(dayNumber, activityId) {\n        const key = ${dayNumber}-;\n        const entry = bookings[key];\n        const planKey = getPlanKey();\n        const day = currentItinerary && currentItinerary[dayNumber - 1];\n        const activity = day ? day.find(a => a.id === activityId) : null;\n        const matchesPlan = entry && entry.planKey === planKey;\n        return (!!entry && matchesPlan) || !!activity?._bookingDone;\n    }\n\n        function toggleBooking(dayNumber, activityId, evt) {
+            function isBooked(dayNumber, activityId) {
+        const key = `${dayNumber}-${activityId}`;
+        const entry = bookings[key];
+        const planKey = getPlanKey();
+        const day = currentItinerary && currentItinerary[dayNumber - 1];
+        const activity = day ? day.find(a => a.id === activityId) : null;
+        const matchesPlan = entry && entry.planKey === planKey;
+        return (!!entry && matchesPlan) || !!activity?._bookingDone;
+    }
+
+    function toggleBooking(dayNumber, activityId, evt) {
         if (evt) evt.stopPropagation();
         const key = `${dayNumber}-${activityId}`;
         const wasBooked = !!bookings[key];
@@ -1847,7 +1857,8 @@ function populateAssistantActivities() {
         renderBookingList();
         renderAssistantInline();
     }
-function fillEditForm(fullName, avatarColor) {
+
+    function fillEditForm(fullName, avatarColor) {(fullName, avatarColor) {
         const first = document.getElementById('editFirstName');
         const last = document.getElementById('editLastName');
         const email = document.getElementById('editEmail');
@@ -3486,6 +3497,7 @@ export {
     renderTripsOnProfile,
     undoLastChange
 };
+
 
 
 
