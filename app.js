@@ -1,8 +1,8 @@
 /* --------- DATA: 3 TEST EXPERIENCES ---------- */
     const experiences = [
-        { id: 1, title: "Luxury Helicopter Tour", category: "Adventure", price: 3, img: "https://images.unsplash.com/photo-1540962351504-03099e0a754b?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "luxury", details: "A 30-minute private helicopter ride offering unmatched views of the Magnificent Mile and Lake Michigan.", insta: "Best shot is the tilt-shift view looking straight down at The Loop. Use a wide-angle lens!", time: "10:00", duration: "45 min", lat: 41.8842, lng: -87.6258 },
-        { id: 2, title: "Deep Dish Pizza (Lou Malnati's)", category: "Food", price: 2, img: "https://images.unsplash.com/photo-1619860167683-176375037549?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "food_mid", details: "Experience authentic Chicago-style deep-dish pizza. Recommended: Buttercrust with sausage.", insta: "Get a close-up of the cheese pull before you slice the pie! Make sure the tomato sauce looks vibrant.", time: "12:30", duration: "1 hr 15 min", lat: 41.8938, lng: -87.6276 },
-        { id: 3, title: "Alinea (3-Star Michelin)", category: "Fine Dining", price: 3, img: "https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "luxury_food", details: "World-renowned culinary experience. This is an evening activity requiring formal attire and advance booking.", insta: "Capture the artistic presentation of the floating dessert course. Use soft, directional lighting.", time: "19:00", duration: "3 hr", lat: 41.9161, lng: -87.6483 }
+        { id: 1, title: "Luxury Helicopter Tour", category: "Adventure", price: 3, img: "https://images.unsplash.com/photo-1540962351504-03099e0a754b?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "luxury", details: "A 30-minute private helicopter ride offering unmatched views of the Magnificent Mile and Lake Michigan.", insta: "Best shot is the tilt-shift view looking straight down at The Loop. Use a wide-angle lens!", time: "10:00", duration: "45 min", lat: 41.8842, lng: -87.6258, requiresBooking: true },
+        { id: 2, title: "Deep Dish Pizza (Lou Malnati's)", category: "Food", price: 2, img: "https://images.unsplash.com/photo-1619860167683-176375037549?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "food_mid", details: "Experience authentic Chicago-style deep-dish pizza. Recommended: Buttercrust with sausage.", insta: "Get a close-up of the cheese pull before you slice the pie! Make sure the tomato sauce looks vibrant.", time: "12:30", duration: "1 hr 15 min", lat: 41.8938, lng: -87.6276, requiresBooking: false },
+        { id: 3, title: "Alinea (3-Star Michelin)", category: "Fine Dining", price: 3, img: "https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "luxury_food", details: "World-renowned culinary experience. This is an evening activity requiring formal attire and advance booking.", insta: "Capture the artistic presentation of the floating dessert course. Use soft, directional lighting.", time: "19:00", duration: "3 hr", lat: 41.9161, lng: -87.6483, requiresBooking: true }
     ];
 
     const USER_STORAGE_KEY = 'chicago_ai_user_v1';
@@ -180,10 +180,16 @@
     let lastAiContext = null;
     let assistantOpen = false;
     let assistantFullscreen = false;
-    let assistantState = 'mid'; // collapsed | mid | full
+    let assistantState = 'mid'; // legacy drawer (unused)
     let assistantChatMode = false;
     let assistantDragStartY = null;
     let assistantDragActive = false;
+    let assistantMode = 'idle'; // idle | change | chat | confirm
+    let assistantSelectedActivity = null;
+    let assistantPendingSave = false;
+    let assistantLastChangeMessage = '';
+    let assistantLastSnapshot = null;
+    let activeDayIndex = 0;
     let dayMapInstance = null;
     let dayMapMarkers = null;
     const CHECKIN_KEY = 'planner_checkins_v1';
@@ -551,10 +557,357 @@
     }
 
     function openAssistantChat() {
-        assistantChatMode = true;
-        setAssistantState('full');
-        const footer = document.querySelector('.assistant-drawer-footer');
-        if (footer) footer.style.display = 'grid';
+        const panel = document.getElementById('assistantPanel');
+        const modal = document.getElementById('chatModal');
+        if (!currentItinerary || !currentItinerary.length) {
+            showToast('Generate an itinerary first.', 'info');
+            return;
+        }
+        if (modal) {
+            openChatModal();
+            const input = document.getElementById('chatInput');
+            if (input) input.focus();
+            const messages = document.getElementById('chatMessages');
+            if (messages && messages.children.length === 0) {
+                appendChatBubble('How can I help you with your Chicago trip today?', false);
+            }
+        } else if (panel) {
+            panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setAssistantMode('change');
+        }
+    }
+
+    /* ---------- INLINE ASSISTANT (PLAN CHANGE FLOW) ---------- */
+    function getActiveDayActivities() {
+        if (!currentItinerary || !currentItinerary.length) return [];
+        const idx = Math.min(activeDayIndex, currentItinerary.length - 1);
+        return currentItinerary[idx] || [];
+    }
+
+    function writeBackDayActivities(activities) {
+        if (!currentItinerary || !currentItinerary.length) return;
+        currentItinerary[activeDayIndex] = activities;
+    }
+
+    function setAssistantMode(mode) {
+        assistantMode = mode;
+        if (mode !== 'chat') assistantSelectedActivity = null;
+        renderAssistantInline();
+    }
+
+    function setChatFocusToDay(dayIdx) {
+        if (!currentItinerary || !currentItinerary.length) return;
+        const idx = Math.max(0, Math.min(dayIdx, currentItinerary.length - 1));
+        const day = currentItinerary[idx] || [];
+        const stops = day.map(a => `${a.title}${a.time ? ' @ ' + a.time : ''}`).join('; ');
+        lastAiContext = {
+            status: 'focus-day',
+            dayNumber: idx + 1,
+            daySummary: stops,
+            dayScheduleDetail: stops,
+            weatherDesc: '',
+            completedTitles: []
+        };
+    }
+
+    function renderAssistantInline() {
+        const activityPrompt = document.getElementById('assistantActivityPrompt');
+        const activityList = document.getElementById('assistantActivityList');
+        const chat = document.getElementById('assistantChat');
+        const chatPrompt = document.getElementById('assistantChatPrompt');
+        const booking = document.getElementById('assistantBookingPrompt');
+        const bookingList = document.getElementById('assistantBookingList');
+        const saveActions = document.getElementById('assistantSaveActions');
+        const chatInputRow = document.querySelector('.assistant-chat-input');
+
+        if (!activityPrompt || !activityList || !chat || !chatPrompt || !booking || !bookingList) return;
+
+        activityPrompt.style.display = (assistantMode === 'change' || assistantMode === 'chat') ? 'block' : 'none';
+        chat.style.display = assistantMode === 'chat' ? 'block' : 'none';
+        booking.style.display = assistantMode === 'confirm' ? 'block' : 'none';
+
+        if (assistantMode === 'change' || assistantMode === 'chat') {
+            populateAssistantActivities();
+        }
+        if (assistantMode === 'chat' && assistantSelectedActivity) {
+            if (assistantPendingSave) {
+                chatPrompt.textContent = `Changes made. Save changes?`;
+                if (saveActions) saveActions.style.display = 'flex';
+                if (chatInputRow) chatInputRow.style.display = 'none';
+            } else {
+                chatPrompt.textContent = `Describe the changes you want to make for "${assistantSelectedActivity.title}" in a few words.`;
+                if (saveActions) saveActions.style.display = 'none';
+                if (chatInputRow) chatInputRow.style.display = 'grid';
+            }
+            const input = document.getElementById('assistantChangeInput');
+            if (input) input.focus();
+        }
+        if (assistantMode === 'confirm') {
+            renderBookingList();
+        }
+        if (assistantMode !== 'chat') {
+            if (saveActions) saveActions.style.display = 'none';
+            if (chatInputRow) chatInputRow.style.display = 'grid';
+        }
+    }
+
+    function populateAssistantActivities() {
+        const activityList = document.getElementById('assistantActivityList');
+        if (!activityList) return;
+        activityList.innerHTML = '';
+        const activities = getActiveDayActivities();
+        if (!activities.length) {
+            activityList.innerHTML = '<div style="color:var(--secondary-text); font-size:0.88rem;">No activities found for this day.</div>';
+            return;
+        }
+        activities.forEach((act) => {
+            const btn = document.createElement('button');
+            btn.className = 'assistant-activity-btn';
+            btn.textContent = `${act.title}${act.time ? ` • ${act.time}` : ''}`;
+            btn.addEventListener('click', () => {
+                assistantSelectedActivity = act;
+                assistantMode = 'chat';
+                assistantPendingSave = false;
+                assistantLastSnapshot = JSON.stringify(getActiveDayActivities());
+                renderAssistantInline();
+            });
+            activityList.appendChild(btn);
+        });
+    }
+
+    function renderBookingList() {
+        const bookingList = document.getElementById('assistantBookingList');
+        const bookingSection = document.getElementById('assistantBookingPrompt');
+        if (!bookingList) return;
+        bookingList.innerHTML = '';
+        const activities = getActiveDayActivities().filter(a => !!a.requiresBooking);
+        if (!activities.length) {
+            bookingList.innerHTML = '<div style="color:var(--secondary-text); font-size:0.88rem;">No activities require booking.</div>';
+            if (bookingSection) bookingSection.style.display = 'none';
+            return;
+        }
+        if (bookingSection) bookingSection.style.display = 'block';
+        activities.forEach((act) => {
+            const item = document.createElement('div');
+            item.className = 'assistant-booking-item';
+            const link = document.createElement('a');
+            link.href = `https://www.google.com/search?q=${encodeURIComponent(act.title + ' booking')}`;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = act.title;
+            item.appendChild(link);
+            bookingList.appendChild(item);
+        });
+    }
+
+    function submitChangeRequest() {
+        const input = document.getElementById('assistantChangeInput');
+        if (!assistantSelectedActivity || !input) {
+            showToast('Select an activity first.', 'info');
+            return;
+        }
+        const text = (input.value || '').trim();
+        if (!text) {
+            showToast('Please describe the change.', 'info');
+            return;
+        }
+        // If awaiting save confirmation, check user intent
+        if (assistantPendingSave) {
+            const affirmative = /\b(yes|yep|yeah|sure|ok|okay|save|confirm)\b/i.test(text);
+            if (affirmative) {
+                showToast('Changes saved.', 'success');
+                assistantPendingSave = false;
+                assistantSelectedActivity = null;
+                assistantMode = 'change';
+                renderItineraryUI(currentItinerary, tripDates || []);
+                return;
+            } else {
+                assistantPendingSave = false;
+                assistantMode = 'chat';
+                renderAssistantInline();
+                return;
+            }
+        }
+
+        const changeResult = applyChangeCommand(text, assistantSelectedActivity);
+        if (!changeResult.changed) {
+            showToast(changeResult.message || 'No change applied.', 'info');
+            return;
+        }
+        assistantPendingSave = true;
+        input.value = '';
+        renderAssistantInline();
+    }
+
+    function handleChangeKeydown(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            submitChangeRequest();
+        }
+    }
+
+    function confirmAssistantSave(accept) {
+        const chatInputRow = document.querySelector('.assistant-chat-input');
+        const saveActions = document.getElementById('assistantSaveActions');
+        if (accept) {
+            showToast('Changes saved.', 'success');
+            setChatFocusToDay(activeDayIndex);
+        } else if (assistantLastSnapshot) {
+            currentItinerary[activeDayIndex] = JSON.parse(assistantLastSnapshot);
+            saveItinerary(currentItinerary);
+            renderItineraryUI(currentItinerary, tripDates || []);
+            showToast('Changes discarded.', 'info');
+        }
+        assistantPendingSave = false;
+        assistantLastSnapshot = null;
+        assistantSelectedActivity = null;
+        assistantMode = 'change';
+        if (saveActions) saveActions.style.display = 'none';
+        if (chatInputRow) chatInputRow.style.display = 'grid';
+        renderAssistantInline();
+    }
+
+    // Legacy assistant drawer stubs (disabled)
+    function showAssistant() { return; }
+    function hideAssistant() { return; }
+    function renderAssistantState() { return; }
+    function expandAssistantFull() { return; }
+    function dockAssistant() { return; }
+    function setAssistantState(state) { assistantState = state; return; }
+    function startSheetDrag() { return; }
+    function onSheetDragMove() { return; }
+    function onSheetDragEnd() { return; }
+    function handleAssistantTap() { return; }
+
+    // Apply change commands to itinerary
+    function parseRequestedDayIndex(text) {
+        if (!tripDates || !tripDates.length) return null;
+        const months = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+        const m = text.toLowerCase().match(/(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(st|nd|rd|th)?/);
+        if (m) {
+            const monthIdx = months.indexOf(m[1]);
+            const dayNum = parseInt(m[2], 10);
+            if (monthIdx >= 0) {
+                const target = tripDates.findIndex(d => {
+                    const dt = new Date(d);
+                    return dt.getMonth() === monthIdx && dt.getDate() === dayNum;
+                });
+                if (target >= 0) return target;
+            }
+        }
+        const dayMatch = text.match(/day\s+(\d{1,2})(st|nd|rd|th)?/i);
+        if (dayMatch) {
+            return Math.max(0, parseInt(dayMatch[1], 10) - 1);
+        }
+        const weekdayMatch = text.toLowerCase().match(/(next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/);
+        if (weekdayMatch) {
+            const targetWeekday = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'].indexOf(weekdayMatch[2]);
+            const nextRequested = !!weekdayMatch[1];
+            const hits = [];
+            tripDates.forEach((d, idx) => {
+                const dt = new Date(d);
+                if (dt.getDay() === targetWeekday) hits.push(idx);
+            });
+            if (hits.length) {
+                if (nextRequested && hits.length > 1) return hits[1];
+                return hits[0];
+            }
+        }
+        return null;
+    }
+
+    function applyChangeCommand(text, activity) {
+        if (!activity) return { changed: false, message: 'No activity selected.' };
+        const lower = text.toLowerCase();
+        const activities = getActiveDayActivities().slice();
+        const idx = activities.findIndex(a => a.id === activity.id);
+        if (idx === -1) return { changed: false, message: 'Activity not found.' };
+
+        const updated = { ...activities[idx] };
+        let changed = false;
+
+        // Change time
+        // time parsing: support 24h (HH:MM) and 12h with am/pm
+        const timeMatch24 = text.match(/(\d{1,2}):(\d{2})/);
+        const timeMatch12 = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+        if (timeMatch12) {
+            let hr = parseInt(timeMatch12[1], 10);
+            const min = timeMatch12[2] ? parseInt(timeMatch12[2], 10) : 0;
+            const ampm = timeMatch12[3].toLowerCase();
+            if (ampm === 'pm' && hr < 12) hr += 12;
+            if (ampm === 'am' && hr === 12) hr = 0;
+            updated.time = `${String(hr).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+            changed = true;
+        } else if (timeMatch24) {
+            const hr = parseInt(timeMatch24[1], 10);
+            const min = parseInt(timeMatch24[2], 10);
+            updated.time = `${String(hr).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+            changed = true;
+        }
+
+        // Move to another day (can be combined with time change)
+        const requestedIdx = parseRequestedDayIndex(text);
+        if (lower.includes('move') || lower.includes('another day') || requestedIdx !== null) {
+            const targetIdx = requestedIdx !== null
+                ? Math.max(0, Math.min(requestedIdx, (tripDates || []).length ? tripDates.length - 1 : requestedIdx))
+                : activeDayIndex;
+            if (targetIdx !== activeDayIndex) {
+                if (!currentItinerary[targetIdx]) currentItinerary[targetIdx] = [];
+                activities.splice(idx, 1);
+                writeBackDayActivities(activities);
+                currentItinerary[targetIdx].push(updated);
+                activeDayIndex = targetIdx;
+                saveItinerary(currentItinerary);
+                renderItineraryUI(currentItinerary, tripDates || []);
+                return { changed: true, message: `Moved to Day ${targetIdx + 1}.` };
+            }
+        }
+
+        // Swap order
+        if (!changed && lower.includes('swap')) {
+            const swapWith = activities[idx + 1] || activities[idx - 1];
+            const swapIdx = idx + 1 < activities.length ? idx + 1 : idx - 1;
+            if (swapWith && swapIdx >= 0) {
+                activities[idx] = swapWith;
+                activities[swapIdx] = updated;
+                writeBackDayActivities(activities);
+                saveItinerary(currentItinerary);
+                renderItineraryUI(currentItinerary, tripDates || []);
+                return { changed: true, message: 'Swapped order.' };
+            }
+        }
+
+        // Replace with a new activity title
+        const replaceMatch = text.match(/replace with\s+(.+)/i);
+        if (!changed && replaceMatch) {
+            const newTitle = replaceMatch[1].trim();
+            if (newTitle) {
+                updated.title = `${newTitle} (updated)`;
+                updated.details = `${updated.details || ''}\nReplaced from ${activity.title}`;
+                changed = true;
+            }
+        }
+
+        // If nothing matched, just append a note
+        if (!changed) {
+            updated.details = `${updated.details || ''}\nChange request: ${text}`;
+            if (!updated.title.includes('(updated)')) updated.title = `${updated.title} (updated)`;
+            changed = true;
+        }
+
+        activities[idx] = updated;
+        writeBackDayActivities(activities);
+        saveItinerary(currentItinerary);
+        renderItineraryUI(currentItinerary, tripDates || []);
+        return { changed: true, message: 'Change applied.' };
+    }
+
+    function initAssistantInline() {
+        const yesBtn = document.getElementById('assistantYesBtn');
+        const noBtn = document.getElementById('assistantNoBtn');
+        if (yesBtn) yesBtn.addEventListener('click', () => setAssistantMode('change'));
+        if (noBtn) noBtn.addEventListener('click', () => setAssistantMode('confirm'));
+        renderAssistantInline();
     }
 
     function handleAssistantPointerStart(y) {
@@ -745,16 +1098,6 @@
 
     /* ---------- ASSISTANT GESTURE BINDINGS ---------- */
     document.addEventListener('DOMContentLoaded', async () => {
-        const assistantDrawer = document.getElementById('assistantDrawer');
-        if (assistantDrawer) {
-            assistantDrawer.addEventListener('click', handleAssistantTap);
-            assistantDrawer.addEventListener('touchstart', handleAssistantTouchStart);
-            assistantDrawer.addEventListener('touchmove', handleAssistantTouchMove);
-            assistantDrawer.addEventListener('touchend', handleAssistantTouchEnd);
-            assistantDrawer.addEventListener('mousedown', handleAssistantMouseDown);
-            assistantDrawer.addEventListener('mousemove', handleAssistantMouseMove);
-            assistantDrawer.addEventListener('mouseup', handleAssistantMouseUp);
-        }
     });
 
     /* ---------- CITY & START CONTROL ---------- */
@@ -934,10 +1277,8 @@
         const headerActions = document.querySelector('.header-actions');
         if (id === 'results') {
             if (headerActions) headerActions.style.display = 'flex';
-            setAssistantState('mid');
         } else {
             if (headerActions) headerActions.style.display = 'none';
-            setAssistantState('collapsed');
         }
 
         if (id === 'profile' || id === 'auth' || id === 'settings' || id === 'pastTrips') {
@@ -1918,11 +2259,13 @@
         const daySummary = document.getElementById('daySummary');
         const viewDayMapBtn = document.getElementById('viewDayMapBtn');
         const dayTabs = document.getElementById('dayTabs');
+        const headerActions = document.querySelector('.header-actions');
 
         itineraryContent.innerHTML = '';
         if (dayTabs) dayTabs.innerHTML = '';
         if (daySummary) daySummary.innerHTML = '';
         if (viewDayMapBtn) viewDayMapBtn.style.display = itinerary.length ? 'inline-flex' : 'none';
+        if (headerActions) headerActions.style.display = 'flex';
 
         if (!itinerary || !itinerary.length) {
             return;
@@ -1940,6 +2283,7 @@
             dayDiv.className = 'itinerary-day';
             dayDiv.innerHTML = renderDay(itinerary[idx], idx + 1, dates[idx]);
             itineraryContent.appendChild(dayDiv);
+            activeDayIndex = idx;
             const dayContent = dayDiv.querySelector('.day-content');
             if (dayContent) dayContent.classList.add('active');
 
@@ -1959,6 +2303,7 @@
                 viewDayMapBtn.style.display = 'inline-flex';
                 viewDayMapBtn.innerHTML = `<i class="fa-solid fa-map-location-dot"></i> Day ${idx + 1} Map (${(itinerary[idx] || []).length})`;
             }
+            renderAssistantInline();
         };
 
         if (dayTabs) {
@@ -2284,6 +2629,17 @@
             showToast('Turn on AI Tour Guide to chat.', 'info');
             return;
         }
+        const isTravelRelated = (text) => {
+            const t = (text || '').toLowerCase();
+            const travelHints = ['trip','travel','itinerary','plan','day','schedule','museum','restaurant','food','hotel','map','route','chicago','booking','ticket','weather','time','move','reschedule','change','at ','am','pm','january','february','march','april','may','june','july','august','september','october','november','december'];
+            const offTopic = ['code','program','song','poem','draw','alien','flag','game','joke'];
+            if (offTopic.some(k => t.includes(k))) return false;
+            return travelHints.some(k => t.includes(k));
+        };
+        if (!isTravelRelated(userText)) {
+            appendChatBubble('I’m here to help with your Chicago trip—ask about your itinerary, days, times, places, bookings, or directions.', false);
+            return;
+        }
         try {
             const profileSummary = `Tempo:${userPreferences.tempo}|Price:${userPreferences.price}|Transport:${userPreferences.transportation}|TourGuide:${userPreferences.tourGuide}|Liked:${(userProfile.likedTags || []).join(', ')}`;
             const contextSummary = lastAiContext
@@ -2578,24 +2934,8 @@
         updateAiUiVisibility();
         refreshSuggestedToday();
         initSignupTourGuideToggle();
-        const assistantBar = document.getElementById('assistantBar');
-        if (assistantBar) {
-            assistantBar.addEventListener('mousedown', (e) => startSheetDrag(e.clientY));
-            assistantBar.addEventListener('touchstart', (e) => {
-                const y = e.touches?.[0]?.clientY;
-                if (y !== undefined) startSheetDrag(y);
-            });
-            assistantBar.addEventListener('click', () => setAssistantState('mid'));
-        }
-        const assistantHeader = document.querySelector('.assistant-drawer-header');
-        if (assistantHeader) {
-            assistantHeader.addEventListener('mousedown', (e) => startSheetDrag(e.clientY));
-            assistantHeader.addEventListener('touchstart', (e) => {
-                const y = e.touches?.[0]?.clientY;
-                if (y !== undefined) startSheetDrag(y);
-            });
-        }
-        // default assistant state when planner is ready
-        setAssistantState('collapsed');
+        initAssistantInline();
     });
+
+
 

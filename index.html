@@ -22,13 +22,13 @@
         <div class="logo" onclick="openHome()">Chicago<span>AI</span> Planner</div>
     </div>
     <div class="header-right">
-        <div class="header-actions">
-            <button class="btn-ghost btn-small" onclick="reviewProfile()" title="Refine"><i class="fa-solid fa-sliders"></i></button>
-            <button class="btn-ghost btn-small" onclick="completeCurrentTrip()" title="Save"><i class="fa-solid fa-check"></i></button>
-            <button class="btn-ghost btn-small" onclick="copyItinerarySummary()" title="Share"><i class="fa-solid fa-share-nodes"></i></button>
-            <button class="btn-ghost btn-small" onclick="goToPlannerStart()" title="New"><i class="fa-solid fa-plus"></i></button>
-            <button class="btn-ghost btn-small" onclick="openAssistantChat()" title="Chat"><i class="fa-solid fa-message"></i></button>
-            <button class="btn-ghost btn-small" onclick="openPlannerTab()" title="Plan"><i class="fa-solid fa-map"></i></button>
+        <div class="header-actions" style="display:none;">
+            <button class="header-icon-btn" aria-label="Plan" onclick="openPlannerTab()">&#128197;</button>
+            <button class="header-icon-btn" aria-label="New Plan" onclick="goToPlannerStart()">&#128284;</button>
+            <button class="header-icon-btn" aria-label="Refine" onclick="reviewProfile()">&#128736;</button>
+            <button class="header-icon-btn" aria-label="Save" onclick="completeCurrentTrip()">&#128190;</button>
+            <button class="header-icon-btn" aria-label="Share" onclick="copyItinerarySummary()">&#128228;</button>
+            <button class="header-icon-btn" aria-label="Chat" onclick="openAssistantChat()">&#128172;</button>
         </div>
         <div class="profile-menu" id="profileMenu">
             <button class="profile-menu-trigger" onclick="toggleProfileDropdown(event)">
@@ -472,39 +472,50 @@
 
     <!-- PLANNER: RESULTS -->
     <section id="results">
-        <div class="results-split">
-            <div class="planner-pane">
-                <div class="results-container">
-                    
-                    <div class="day-tabs" id="dayTabs"></div>
+        <div class="results-container">
+            
+            <div class="day-tabs" id="dayTabs"></div>
 
-                    <div class="day-summary" id="daySummary"></div>
+            <div class="day-summary" id="daySummary"></div>
 
-                    <div class="results-scroll-content" id="itineraryContent">
-                    </div>
-                    
+            <div class="results-scroll-content" id="itineraryContent"></div>
+
+            <div class="assistant-panel" id="assistantPanel">
+                <div class="assistant-panel-header">
+                    <span>Assistant</span>
                 </div>
-            </div>
-            <div class="assistant-pane">
-                <div class="assistant-bar" id="assistantBar" onclick="expandAssistantSheet()">
-                    <i class="fa-solid fa-message"></i> Chat with Assistant
-                </div>
-                <div id="assistantDrawer" class="assistant-drawer assistant-static" style="display:none;">
-                        <div class="assistant-drawer-header">
-                        <span>Assistant</span>
-                        <div style="display:flex; gap:8px;">
-                            <button class="assistant-close" onclick="collapseAssistantSheet()">Close</button>
-                            <button class="assistant-close" onclick="resetAssistant()">Reset</button>
+                <div class="assistant-panel-body">
+                    <div class="assistant-question">
+                        <div class="assistant-title">Do you want to change the plan?</div>
+                        <div class="assistant-sub">You can change the days/activities.</div>
+                        <div class="assistant-actions-row">
+                            <button class="assistant-chip" id="assistantYesBtn">I want to make changes on the plan</button>
+                            <button class="assistant-chip" id="assistantNoBtn">Keep &amp; Confirm the plan</button>
                         </div>
                     </div>
-                    <div class="assistant-drawer-content" id="assistantContent">Assistant is standing by.</div>
-                    <div class="assistant-drawer-actions" id="assistantActions"></div>
-                    <div class="assistant-drawer-footer">
-                        <input class="chat-input" id="assistantSheetInput" placeholder="Ask the assistant..." onkeydown="handleSheetKeydown(event)">
-                        <button class="chat-send" onclick="sendChatMessage()">Send</button>
+                    <div class="assistant-activity-prompt" id="assistantActivityPrompt" style="display:none;">
+                        <div class="assistant-sub" style="margin-bottom:6px;">Which of the following would you like to change?</div>
+                        <div class="assistant-activity-list" id="assistantActivityList"></div>
+                    </div>
+                    <div class="assistant-chat" id="assistantChat" style="display:none;">
+                        <div class="assistant-sub" id="assistantChatPrompt"></div>
+                        <div class="assistant-save-actions" id="assistantSaveActions" style="display:none;">
+                            <button class="assistant-chip" onclick="confirmAssistantSave(true)">Save changes</button>
+                            <button class="assistant-chip" onclick="confirmAssistantSave(false)">Discard</button>
+                        </div>
+                        <div class="assistant-chat-input">
+                            <input class="chat-input" id="assistantChangeInput" placeholder="Explain in a few words..." onkeydown="handleChangeKeydown(event)">
+                            <button class="chat-send" onclick="submitChangeRequest()">Send</button>
+                        </div>
+                    </div>
+                    <div class="assistant-booking" id="assistantBookingPrompt" style="display:none;">
+                        <div class="assistant-title" style="margin-bottom:6px;">Caution, action required!</div>
+                        <div class="assistant-sub" style="margin-bottom:10px;">Bookings / reservations / tickets needed for the following:</div>
+                        <div class="assistant-booking-list" id="assistantBookingList"></div>
                     </div>
                 </div>
             </div>
+            
         </div>
     </section>
 </main>
@@ -553,5 +564,7 @@
 <script src="app.js?v=3"></script>
 </body>
 </html>
+
+
 
 
