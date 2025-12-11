@@ -401,11 +401,8 @@
             <div style="margin-top:6px; font-size:0.86rem; color: var(--secondary-text);">${summary || 'Tap an action below to tweak your day.'}</div>
         `;
 
+        // Simplified helper actions: only surface chat entry
         actions.innerHTML = `
-            <button class="assistant-chip" onclick="skipNextStop(this)">Skip next</button>
-            <button class="assistant-chip" onclick="moveNextToTomorrow(this)">Move next to tomorrow</button>
-            <button class="assistant-chip" onclick="suggestNearbyFood(this)">Nearby food</button>
-            <button class="assistant-chip" onclick="summarizeToday(this)">Summarize today</button>
             <button class="assistant-chip" onclick="openChatModal()">Ask the assistant</button>
         `;
     }
@@ -1274,11 +1271,11 @@
         const target = document.getElementById(id);
         if (target) target.classList.add('active');
 
-        const headerActions = document.querySelector('.header-actions');
+        const headerActionsCompact = document.getElementById('headerActionsCompact');
         if (id === 'results') {
-            if (headerActions) headerActions.style.display = 'flex';
+            if (headerActionsCompact) headerActionsCompact.style.display = 'flex';
         } else {
-            if (headerActions) headerActions.style.display = 'none';
+            if (headerActionsCompact) headerActionsCompact.style.display = 'none';
         }
 
         if (id === 'profile' || id === 'auth' || id === 'settings' || id === 'pastTrips') {
@@ -1287,6 +1284,24 @@
             setActiveTab('plan');
         }
     }
+
+    function toggleHeaderActionsMenu(event) {
+        const wrap = document.getElementById('headerActionsCompact');
+        if (!wrap) return;
+        if (event) event.stopPropagation();
+        wrap.classList.toggle('open');
+    }
+
+    function closeHeaderActionsMenu() {
+        const wrap = document.getElementById('headerActionsCompact');
+        if (wrap) wrap.classList.remove('open');
+    }
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.header-actions-compact')) {
+            closeHeaderActionsMenu();
+        }
+    });
 
     function openPlannerTab() {
         if (!currentUser) {
@@ -2218,6 +2233,127 @@
     }
 
     /* ---------- ITINERARY ---------- */
+    const LOOP_COORDS = { lat: 41.8781, lng: -87.6298 };
+
+    function getTransportMode() {
+        const val = typeof userPreferences.transportation === 'number' ? userPreferences.transportation : 50;
+        if (val >= 70) return 'private';
+        if (val >= 40) return 'rideshare';
+        return 'walk';
+    }
+
+    function haversineDistanceKm(a, b) {
+        if (!a || !b || !a.lat || !a.lng || !b.lat || !b.lng) return 0;
+        const toRad = (deg) => deg * (Math.PI / 180);
+        const R = 6371;
+        const dLat = toRad(b.lat - a.lat);
+        const dLng = toRad(b.lng - a.lng);
+        const lat1 = toRad(a.lat);
+        const lat2 = toRad(b.lat);
+        const sinDLat = Math.sin(dLat / 2);
+        const sinDLng = Math.sin(dLng / 2);
+        const aVal = sinDLat * sinDLat + sinDLng * sinDLng * Math.cos(lat1) * Math.cos(lat2);
+        const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
+        return R * c;
+    }
+
+    function estimateTravelMinutes(distanceKm, mode) {
+        const speeds = { walk: 4.5, rideshare: 18, private: 24 }; // km/h
+        const overhead = { walk: 4, rideshare: 8, private: 6 }; // mins for waiting/parking
+        const speed = speeds[mode] || speeds.walk;
+        const base = (distanceKm / speed) * 60;
+        return Math.max(5, Math.round(base + (overhead[mode] || 4)));
+    }
+
+    function formatMinutesToClock(totalMinutes) {
+        const normalized = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+        const h = Math.floor(normalized / 60);
+        const m = normalized % 60;
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+
+    function formatDurationLabel(mins) {
+        const m = Math.max(15, Math.round(mins));
+        const h = Math.floor(m / 60);
+        const rem = m % 60;
+        if (h === 0) return `${rem} min`;
+        if (rem === 0) return `${h} hr`;
+        return `${h} hr ${rem} min`;
+    }
+
+    function getDurationMinutes(activity) {
+        if (!activity) return 90;
+        if (typeof activity.durationMinutes === 'number') return Math.max(20, activity.durationMinutes);
+        const str = (activity.duration || '').toLowerCase();
+        const hrMatch = str.match(/(\d+)\s*hr/);
+        const minMatch = str.match(/(\d+)\s*min/);
+        const hrs = hrMatch ? parseInt(hrMatch[1], 10) : 0;
+        const mins = minMatch ? parseInt(minMatch[1], 10) : 0;
+        const total = hrs * 60 + mins;
+        return total || 90;
+    }
+
+    function scoreActivityForPlan(activity, cursor, dayIdx) {
+        let score = 100;
+        if (!activity) return 0;
+        const dist = haversineDistanceKm(cursor, activity);
+        score -= dist * 6;
+        if (likedTags.includes(activity.tag)) score += 25;
+        if (userPreferences.price < 40 && activity.price <= 2) score += 12;
+        if (userPreferences.price > 65 && activity.price >= 2) score += 10;
+        if (userPreferences.tourGuide && activity.requiresBooking) score += 6;
+        if (dayIdx === 0 && activity.category === 'Architecture') score += 5;
+        if (activity.isOutdoor && userPreferences.tempo < 40) score -= 4;
+        if (!activity.lat || !activity.lng) score -= 8;
+        return score;
+    }
+
+    function buildOptimizedItinerary(dates, activities) {
+        const itinerary = [];
+        const pool = activities.slice();
+        const used = new Set();
+        const tempo = typeof userPreferences.tempo === 'number' ? userPreferences.tempo : 50;
+        const targetCount = tempo >= 70 ? 5 : tempo >= 45 ? 4 : 3;
+        const startHour = tempo <= 35 ? 10 : 9;
+        const transportMode = getTransportMode();
+
+        dates.forEach((d, dayIdx) => {
+            const dayPlan = [];
+            let cursor = { ...LOOP_COORDS };
+            let currentMinutes = startHour * 60 + 15;
+            const latest = 21 * 60 + 30;
+
+            for (let i = 0; i < targetCount; i++) {
+                const candidates = pool.filter(a => !used.has(a.id));
+                if (!candidates.length) break;
+                candidates.sort((a, b) => scoreActivityForPlan(b, cursor, dayIdx) - scoreActivityForPlan(a, cursor, dayIdx));
+                const chosen = candidates[0];
+                if (!chosen) break;
+                used.add(chosen.id);
+                const idx = pool.findIndex(p => p.id === chosen.id);
+                if (idx >= 0) pool.splice(idx, 1);
+
+                const dist = haversineDistanceKm(cursor, chosen);
+                currentMinutes += estimateTravelMinutes(dist, transportMode);
+                const durationMinutes = getDurationMinutes(chosen);
+
+                const activity = { ...chosen };
+                activity.time = formatMinutesToClock(currentMinutes);
+                activity.duration = formatDurationLabel(durationMinutes);
+                dayPlan.push(activity);
+
+                currentMinutes += durationMinutes;
+                cursor = { lat: chosen.lat || cursor.lat, lng: chosen.lng || cursor.lng };
+
+                if (currentMinutes > latest) break;
+            }
+
+            itinerary.push(dayPlan);
+        });
+
+        return itinerary;
+    }
+
     function getDaysArray(start, end) {
         const dates = [];
         let currentDate = new Date(start); 
@@ -2245,7 +2381,19 @@
         const dates = getDaysArray(selectedDates[0], selectedDates[1]);
         tripDates = dates;
         const allActivities = [...experiences];
-        const itinerary = generateMockItinerary(dates, allActivities);
+        let itinerary = [];
+
+        try {
+            itinerary = buildOptimizedItinerary(dates, allActivities);
+        } catch (e) {
+            console.warn('Optimized itinerary failed, falling back', e);
+        }
+
+        // Fallback if optimizer returned nothing usable
+        const hasStops = itinerary && itinerary.some(day => Array.isArray(day) && day.length);
+        if (!hasStops) {
+            itinerary = generateMockItinerary(dates, allActivities);
+        }
 
         currentItinerary = itinerary;
         saveItinerary(itinerary);
@@ -2259,13 +2407,13 @@
         const daySummary = document.getElementById('daySummary');
         const viewDayMapBtn = document.getElementById('viewDayMapBtn');
         const dayTabs = document.getElementById('dayTabs');
-        const headerActions = document.querySelector('.header-actions');
+        const headerActionsCompact = document.getElementById('headerActionsCompact');
 
         itineraryContent.innerHTML = '';
         if (dayTabs) dayTabs.innerHTML = '';
         if (daySummary) daySummary.innerHTML = '';
         if (viewDayMapBtn) viewDayMapBtn.style.display = itinerary.length ? 'inline-flex' : 'none';
-        if (headerActions) headerActions.style.display = 'flex';
+        if (headerActionsCompact) headerActionsCompact.style.display = 'flex';
 
         if (!itinerary || !itinerary.length) {
             return;
