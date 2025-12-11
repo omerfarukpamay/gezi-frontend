@@ -1265,18 +1265,21 @@
         }
     }
 
+    function updateHeaderActionsVisibility() {
+        const headerActionsCompact = document.getElementById('headerActionsCompact');
+        const hasPlan = currentItinerary && Array.isArray(currentItinerary) && currentItinerary.length > 0;
+        if (headerActionsCompact) {
+            headerActionsCompact.style.display = hasPlan ? 'flex' : 'none';
+        }
+    }
+
     function showOnlySection(id) {
         const sections = document.querySelectorAll('main > section');
         sections.forEach(sec => sec.classList.remove('active'));
         const target = document.getElementById(id);
         if (target) target.classList.add('active');
 
-        const headerActionsCompact = document.getElementById('headerActionsCompact');
-        if (id === 'results') {
-            if (headerActionsCompact) headerActionsCompact.style.display = 'flex';
-        } else {
-            if (headerActionsCompact) headerActionsCompact.style.display = 'none';
-        }
+        updateHeaderActionsVisibility();
 
         if (id === 'profile' || id === 'auth' || id === 'settings' || id === 'pastTrips') {
             setActiveTab('profile');
@@ -1425,6 +1428,8 @@
         const itineraryContent = document.getElementById('itineraryContent');
         if (itineraryContent) itineraryContent.innerHTML = '';
         updateStartButtonState();
+        currentItinerary = null;
+        updateHeaderActionsVisibility();
     }
 
     /* ---------- AUTH MODE SWITCH ---------- */
@@ -2413,7 +2418,7 @@
         if (dayTabs) dayTabs.innerHTML = '';
         if (daySummary) daySummary.innerHTML = '';
         if (viewDayMapBtn) viewDayMapBtn.style.display = itinerary.length ? 'inline-flex' : 'none';
-        if (headerActionsCompact) headerActionsCompact.style.display = 'flex';
+        updateHeaderActionsVisibility();
 
         if (!itinerary || !itinerary.length) {
             return;
