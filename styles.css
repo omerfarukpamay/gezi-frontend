@@ -1328,6 +1328,7 @@
             gap: 8px;
             padding: 10px 12px 6px;
             overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
             position: sticky;
             top: 0;
             background: rgba(15,23,42,0.96);

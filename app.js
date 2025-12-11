@@ -54,7 +54,16 @@ import './state.js';
     let assistantChatMode = false;
     let assistantDragStartY = null;
     let assistantDragActive = false;
-    let assistantMode = 'idle'; // idle | change | chat | confirm
+    const ASSISTANT_STATES = {
+        REFINEMENT_INITIAL: 'refinement_initial',
+        REFINEMENT_PICK_ACTIVITY: 'refinement_pick',
+        REFINEMENT_CHAT: 'refinement_chat',
+        REFINEMENT_POST_CHANGE: 'refinement_post_change',
+        BOOKING_ALERT: 'booking_alert',
+        TOUR_GUIDE_READY: 'tour_guide_ready'
+    };
+    const ALLOWED_ASSISTANT_STATES = new Set(Object.values(ASSISTANT_STATES));
+    let assistantMode = ASSISTANT_STATES.REFINEMENT_INITIAL;
     let assistantSelectedActivity = null;
     let assistantPendingSave = false;
     let assistantLastChangeMessage = '';
@@ -68,13 +77,23 @@ import './state.js';
     const loadBookings = window.loadBookings;
     const saveBookings = window.saveBookings;
     let bookings = loadBookings();
+    let confirmedDays = {};
     let changeHistory = window.changeHistory || {};
+    let assistantLastChangedActivityId = null;
+    let assistantLastChangedDayIdx = null;
     const loadHistory = () => {
         try { return JSON.parse(localStorage.getItem('planner_change_history_v1')) || {}; } catch (e) { return {}; }
     };
     const saveHistory = () => {
         try { localStorage.setItem('planner_change_history_v1', JSON.stringify(changeHistory)); } catch (e) {}
     };
+    const loadConfirmedDays = () => {
+        try { return JSON.parse(localStorage.getItem('assistant_confirmed_days_v1')) || {}; } catch (e) { return {}; }
+    };
+    const saveConfirmedDays = () => {
+        try { localStorage.setItem('assistant_confirmed_days_v1', JSON.stringify(confirmedDays)); } catch (e) {}
+    };
+    confirmedDays = loadConfirmedDays();
     changeHistory = loadHistory();
     window.changeHistory = changeHistory;
 
@@ -462,7 +481,7 @@ import './state.js';
             }
         } else if (panel) {
             panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            setAssistantMode('change');
+            setAssistantMode(ASSISTANT_STATES.REFINEMENT_INITIAL);
         }
     }
 
@@ -487,14 +506,35 @@ import './state.js';
         const activities = currentItinerary && currentItinerary[dayIdx] ? currentItinerary[dayIdx] : [];
         return activities.filter(a => a.requiresBooking && !isBooked(dayIdx + 1, a.id));
     }
+
+    function getAllOutstandingBookings() {
+        const list = [];
+        if (!currentItinerary || !currentItinerary.length) return list;
+        currentItinerary.forEach((day, idx) => {
+            (day || []).forEach((act) => {
+                if (act.requiresBooking && !isBooked(idx + 1, act.id)) {
+                    list.push({ ...act, dayNumber: idx + 1 });
+                }
+            });
+        });
+        return list;
+    }
 function writeBackDayActivities(activities) {
         if (!currentItinerary || !currentItinerary.length) return;
         currentItinerary[activeDayIndex] = activities;
     }
 
     function setAssistantMode(mode) {
+        if (!ALLOWED_ASSISTANT_STATES.has(mode)) return;
         assistantMode = mode;
-        if (mode !== 'chat') assistantSelectedActivity = null;
+        if (mode !== ASSISTANT_STATES.REFINEMENT_CHAT && mode !== ASSISTANT_STATES.REFINEMENT_POST_CHANGE) {
+            assistantSelectedActivity = null;
+            assistantPendingSave = false;
+            assistantLastSnapshot = null;
+            assistantLastChangeMessage = '';
+            assistantLastChangedActivityId = null;
+            assistantLastChangedDayIdx = null;
+        }
         renderAssistantInline();
     }
 
@@ -513,6 +553,36 @@ function writeBackDayActivities(activities) {
         };
     }
 
+    function confirmDayPlan() {
+        if (!currentItinerary || !currentItinerary.length) {
+            renderAssistantInline();
+            return;
+        }
+        const key = getPlanKey();
+        if (!confirmedDays[key]) confirmedDays[key] = {};
+        confirmedDays[key][activeDayIndex + 1] = true;
+        saveConfirmedDays();
+
+        const outstanding = getAllOutstandingBookings();
+        const allDaysConfirmed = currentItinerary.every((_, idx) => confirmedDays[key]?.[idx + 1]);
+        if (outstanding.length) {
+            assistantMode = ASSISTANT_STATES.BOOKING_ALERT;
+        } else if (allDaysConfirmed) {
+            assistantMode = ASSISTANT_STATES.TOUR_GUIDE_READY;
+        } else {
+            assistantMode = ASSISTANT_STATES.REFINEMENT_INITIAL;
+        }
+        renderAssistantInline();
+    }
+
+    // Save any pending assistant edits then confirm the day
+    function confirmAndFinalizeDay() {
+        if (assistantPendingSave) {
+            confirmAssistantSave(true);
+        }
+        confirmDayPlan();
+    }
+
     function renderAssistantInline() {
         const activityPrompt = document.getElementById('assistantActivityPrompt');
         const activityList = document.getElementById('assistantActivityList');
@@ -529,60 +599,104 @@ function writeBackDayActivities(activities) {
 
         if (!activityPrompt || !activityList || !chat || !chatPrompt || !booking || !bookingList) return;
 
-        activityPrompt.style.display = (assistantMode === 'change' || assistantMode === 'chat') ? 'block' : 'none';
-        chat.style.display = assistantMode === 'chat' ? 'block' : 'none';
-        booking.style.display = assistantMode === 'confirm' ? 'block' : 'none';
+        // Reset displays
+        activityPrompt.style.display = 'none';
+        chat.style.display = 'none';
+        booking.style.display = 'none';
+        if (saveActions) saveActions.style.display = 'none';
+        if (chatInputRow) chatInputRow.style.display = 'grid';
 
-        if (assistantMode === 'change' || assistantMode === 'chat') {
-            populateAssistantActivities();
-        }
-        if (assistantMode === 'chat' && assistantSelectedActivity) {
-            if (assistantPendingSave) {
-                chatPrompt.innerHTML = assistantLastChangeMessage
-                    ? `Confirm change: ${assistantLastChangeMessage}`
-                    : 'Changes made. Save changes?';
-                if (saveActions) saveActions.style.display = 'flex';
-                if (chatInputRow) chatInputRow.style.display = 'none';
-            } else {
-                chatPrompt.textContent = `Describe the changes you want to make for "${assistantSelectedActivity.title}" in a few words.`;
-                if (saveActions) saveActions.style.display = 'none';
-                if (chatInputRow) chatInputRow.style.display = 'grid';
+        const outstanding = getAllOutstandingBookings();
+        const planKey = getPlanKey();
+        const dayConfirmed = confirmedDays[planKey]?.[activeDayIndex + 1];
+
+        switch (assistantMode) {
+            case ASSISTANT_STATES.REFINEMENT_INITIAL: {
+                if (questionTitle) questionTitle.textContent = 'Would you like to make any changes?';
+                if (questionSub) {
+                    questionSub.textContent = 'You can change the days/activities or keep & confirm when ready.';
+                }
+                if (questionActions) {
+                    questionActions.innerHTML = `
+                        <button class="assistant-chip" onclick="setAssistantMode('${ASSISTANT_STATES.REFINEMENT_PICK_ACTIVITY}')">I want to make a change</button>
+                        <button class="assistant-chip" onclick="confirmDayPlan()">Keep & Confirm the plan</button>
+                    `;
+                }
+                break;
             }
-            const input = document.getElementById('assistantChangeInput');
-            if (input) input.focus();
-        }
-        if (assistantMode === 'confirm') {
-            renderBookingList();
-        }
-        if (assistantMode !== 'chat') {
-            if (saveActions) saveActions.style.display = 'none';
-            if (chatInputRow) chatInputRow.style.display = 'grid';
+            case ASSISTANT_STATES.REFINEMENT_PICK_ACTIVITY: {
+                if (questionTitle) questionTitle.textContent = 'Please choose an activity to make changes.';
+                if (questionSub) questionSub.textContent = '';
+                if (questionActions) questionActions.innerHTML = '';
+                activityPrompt.style.display = 'block';
+                populateAssistantActivities();
+                break;
+            }
+            case ASSISTANT_STATES.REFINEMENT_CHAT: {
+                chat.style.display = 'block';
+                if (assistantPendingSave) {
+                    chatPrompt.innerHTML = assistantLastChangeMessage
+                        ? `Confirm change: ${assistantLastChangeMessage}`
+                        : 'Changes made. Save changes?';
+                    if (saveActions) saveActions.style.display = 'flex';
+                    if (chatInputRow) chatInputRow.style.display = 'none';
+                } else {
+                    chatPrompt.textContent = assistantSelectedActivity
+                        ? `Describe the changes you want to make for "${assistantSelectedActivity.title}" in a few words.`
+                        : 'Select an activity to change.';
+                    if (saveActions) saveActions.style.display = 'none';
+                    if (chatInputRow) chatInputRow.style.display = 'grid';
+                }
+                break;
+            }
+            case ASSISTANT_STATES.REFINEMENT_POST_CHANGE: {
+                chat.style.display = 'block';
+                chatPrompt.textContent = 'Changes are made. Keep & Confirm, continue, discard, or save?';
+                if (questionTitle) questionTitle.textContent = 'Changes made';
+                if (questionSub) questionSub.textContent = assistantLastChangeMessage || '';
+                if (questionActions) {
+                    questionActions.innerHTML = `
+                        <button class="assistant-chip" onclick="confirmAndFinalizeDay()">Keep & Confirm the plan</button>
+                        <button class="assistant-chip" onclick="resumeAssistantChanges()">Continue Making Changes</button>
+                        <button class="assistant-chip" onclick="confirmAssistantSave(false)">Discard</button>
+                        <button class="assistant-chip" onclick="confirmAssistantSave(true)">Save</button>
+                    `;
+                }
+                break;
+            }
+            case ASSISTANT_STATES.BOOKING_ALERT: {
+                booking.style.display = 'block';
+                renderBookingList();
+                if (questionTitle) questionTitle.textContent = 'Caution: bookings needed';
+                if (questionSub) questionSub.textContent = outstanding.length ? `Pending: ${outstanding.map(o => `Day ${o.dayNumber}: ${o.title}`).join(', ')}` : '';
+                if (questionActions) questionActions.innerHTML = '';
+                break;
+            }
+            case ASSISTANT_STATES.TOUR_GUIDE_READY: {
+                const today = getActiveDayActivities();
+                const agenda = today.map(a => `${a.time || 'TBD'} - ${a.title}`).join('<br>');
+                const dayDate = tripDates && tripDates[activeDayIndex] ? tripDates[activeDayIndex] : null;
+                const weather = dayDate ? simulateWeather(dayDate) : { icon: '☁️', temp: '', desc: '' };
+                if (questionTitle) questionTitle.textContent = 'Ready for the Chicago trip!';
+                if (questionSub) questionSub.innerHTML = `AI Tour Guide is ready. Long-press "Arrived" or "Completed" for 2s to send a signal.<br>${weather.icon || ''} ${weather.temp || ''} ${weather.desc || ''}<br>${agenda}`;
+                if (questionActions) {
+                    questionActions.innerHTML = `
+                        <button class="assistant-chip" onclick="openChatModal()">Help</button>
+                        <button class="assistant-chip" onclick="skipNextStop(this)">Skip next</button>
+                        <button class="assistant-chip" onclick="moveNextToTomorrow(this)">Delay next</button>
+                    `;
+                }
+                break;
+            }
         }
 
-        const outstanding = getOutstandingBookings();
-        if (!assistantPendingSave && outstanding.length === 0) {
-            const today = getActiveDayActivities();
-            const agenda = today.map(a => `${a.time || 'TBD'} - ${a.title}`).join('<br>');
-            if (questionTitle) questionTitle.textContent = 'Route ready';
-            if (questionSub) questionSub.innerHTML = `All stops for Day ${activeDayIndex + 1} are booked and confirmed.<br>${agenda}`;
-            if (questionActions) {
-                questionActions.innerHTML = `
-                    <button class="assistant-chip" onclick="openChatModal()">Ask a question</button>
-                    <button class="assistant-chip" onclick="skipNextStop(this)">Skip next</button>
-                    <button class="assistant-chip" onclick="moveNextToTomorrow(this)">Delay next</button>
-                `;
-            }
-        } else if (outstanding.length > 0) {
-            assistantMode = 'confirm';
-            const names = outstanding.map(o => o.title).join(', ');
-            if (questionTitle) questionTitle.textContent = 'Bookings needed';
-            if (questionSub) questionSub.textContent = `Pending: ${names}`;
-            if (questionActions) {
-                questionActions.innerHTML = `
-                    <button class="assistant-chip" onclick="openChatModal()">Ask a question</button>
-                    <button class="assistant-chip" onclick="renderBookingList()">Refresh list</button>
-                `;
-            }
+        // Auto-transition only between booking alert and ready when bookings change
+        if (!assistantPendingSave && assistantMode === ASSISTANT_STATES.BOOKING_ALERT && outstanding.length === 0) {
+            assistantMode = ASSISTANT_STATES.TOUR_GUIDE_READY;
+            renderAssistantInline();
+        } else if (!assistantPendingSave && assistantMode === ASSISTANT_STATES.TOUR_GUIDE_READY && outstanding.length > 0) {
+            assistantMode = ASSISTANT_STATES.BOOKING_ALERT;
+            renderAssistantInline();
         }
     }
 function populateAssistantActivities() {
@@ -597,10 +711,10 @@ function populateAssistantActivities() {
         activities.forEach((act) => {
             const btn = document.createElement('button');
             btn.className = 'assistant-activity-btn';
-            btn.textContent = `${act.title}${act.time ? ` • ${act.time}` : ''}`;
+            btn.textContent = `${act.title}${act.time ? ` - ${act.time}` : ''}`;
             btn.addEventListener('click', () => {
                 assistantSelectedActivity = act;
-                assistantMode = 'chat';
+                assistantMode = ASSISTANT_STATES.REFINEMENT_CHAT;
                 assistantPendingSave = false;
                 assistantLastSnapshot = JSON.stringify(getActiveDayActivities());
                 renderAssistantInline();
@@ -614,7 +728,7 @@ function populateAssistantActivities() {
         const bookingSection = document.getElementById('assistantBookingPrompt');
         if (!bookingList) return;
         bookingList.innerHTML = '';
-        const activities = getActiveDayActivities().filter(a => !!a.requiresBooking && !isBooked(activeDayIndex + 1, a.id));
+        const activities = getAllOutstandingBookings();
         if (!activities.length) {
             bookingList.innerHTML = '<div style="color:var(--secondary-text); font-size:0.88rem;">No activities require booking.</div>';
             if (bookingSection) bookingSection.style.display = 'none';
@@ -628,8 +742,14 @@ function populateAssistantActivities() {
             link.href = `https://www.google.com/search?q=${encodeURIComponent(act.title + ' booking')}`;
             link.target = '_blank';
             link.rel = 'noopener noreferrer';
-            link.textContent = act.title;
+            link.textContent = `Day ${act.dayNumber}: ${act.title}`;
             item.appendChild(link);
+            const btn = document.createElement('button');
+            btn.className = 'assistant-chip';
+            btn.style.marginLeft = '8px';
+            btn.textContent = 'Mark booked';
+            btn.onclick = () => toggleBooking(act.dayNumber, act.id);
+            item.appendChild(btn);
             bookingList.appendChild(item);
         });
     }
@@ -640,37 +760,49 @@ function populateAssistantActivities() {
             showToast('Select an activity first.', 'info');
             return;
         }
-        const text = (input.value || '').trim();
-        if (!text) {
+        let textRaw = (input.value || '').trim();
+        if (!textRaw) {
             showToast('Please describe the change.', 'info');
             return;
         }
+        let parsed = null;
+        if (textRaw.startsWith('{') || textRaw.startsWith('[')) {
+            try {
+                parsed = JSON.parse(textRaw);
+            } catch (e) {
+                showToast('Could not parse that change. Please rephrase.', 'error');
+                return;
+            }
+        }
         // If awaiting save confirmation, check user intent
         if (assistantPendingSave) {
-            const affirmative = /\b(yes|yep|yeah|sure|ok|okay|save|confirm)\b/i.test(text);
+            const affirmative = /\b(yes|yep|yeah|sure|ok|okay|save|confirm)\b/i.test(textRaw);
             if (affirmative) {
                 showToast('Changes saved.', 'success');
                 assistantPendingSave = false;
                 assistantSelectedActivity = null;
-                assistantMode = 'change';
+                assistantMode = ASSISTANT_STATES.REFINEMENT_PICK_ACTIVITY;
                 renderItineraryUI(currentItinerary, tripDates || []);
                 return;
             } else {
                 assistantPendingSave = false;
-                assistantMode = 'chat';
+                assistantMode = ASSISTANT_STATES.REFINEMENT_CHAT;
                 renderAssistantInline();
                 return;
             }
         }
 
-        const changeResult = applyChangeCommand(text, assistantSelectedActivity);
+        const changeResult = applyChangeCommand(parsed || textRaw, assistantSelectedActivity);
         if (!changeResult.changed) {
             showToast(changeResult.message || 'No change applied.', 'info');
             return;
         }
         assistantPendingSave = true;
+        assistantLastChangedActivityId = assistantSelectedActivity ? assistantSelectedActivity.id : null;
+        assistantLastChangedDayIdx = activeDayIndex;
         assistantLastChangeMessage = changeResult.preview || changeResult.message;
         input.value = '';
+        assistantMode = ASSISTANT_STATES.REFINEMENT_POST_CHANGE;
         renderAssistantInline();
     }
 
@@ -688,6 +820,17 @@ function populateAssistantActivities() {
             showToast('Changes saved.', 'success');
             recordChange(activeDayIndex, assistantLastChangeMessage || 'Assistant change', assistantLastSnapshot);
             setChatFocusToDay(activeDayIndex);
+            if (assistantLastChangedActivityId !== null) {
+                const dayList = currentItinerary[assistantLastChangedDayIdx] || [];
+                const target = dayList.find(a => a.id === assistantLastChangedActivityId);
+                if (target) target._recentlyUpdated = true;
+                saveItinerary(currentItinerary);
+                renderItineraryUI(currentItinerary, tripDates || []);
+            }
+            // Stay in post-change so the user can Keep & Confirm or continue editing
+            assistantPendingSave = false;
+            assistantMode = ASSISTANT_STATES.REFINEMENT_POST_CHANGE;
+            assistantLastChangeMessage = assistantLastChangeMessage ? `${assistantLastChangeMessage} (saved)` : 'Change saved';
         } else if (assistantLastSnapshot) {
             currentItinerary[activeDayIndex] = JSON.parse(assistantLastSnapshot);
             saveItinerary(currentItinerary);
@@ -697,9 +840,21 @@ function populateAssistantActivities() {
         assistantPendingSave = false;
         assistantLastSnapshot = null;
         assistantSelectedActivity = null;
-        assistantMode = 'change';
+        assistantLastChangedActivityId = null;
+        assistantLastChangedDayIdx = null;
+        assistantMode = assistantMode === ASSISTANT_STATES.REFINEMENT_POST_CHANGE
+            ? ASSISTANT_STATES.REFINEMENT_POST_CHANGE
+            : ASSISTANT_STATES.REFINEMENT_PICK_ACTIVITY;
         if (saveActions) saveActions.style.display = 'none';
         if (chatInputRow) chatInputRow.style.display = 'grid';
+        renderAssistantInline();
+    }
+
+    function resumeAssistantChanges() {
+        assistantPendingSave = false;
+        assistantSelectedActivity = null;
+        assistantLastSnapshot = null;
+        assistantMode = ASSISTANT_STATES.REFINEMENT_PICK_ACTIVITY;
         renderAssistantInline();
     }
 
@@ -761,7 +916,12 @@ function populateAssistantActivities() {
 
     function applyChangeCommand(text, activity) {
         if (!activity) return { changed: false, message: 'No activity selected.' };
-        const lower = text.toLowerCase();
+        let structured = null;
+        if (typeof text === 'object' && text !== null) {
+            structured = text;
+            text = JSON.stringify(text);
+        }
+        const lower = typeof text === 'string' ? text.toLowerCase() : '';
         const activities = getActiveDayActivities().slice();
         const idx = activities.findIndex(a => a.id === activity.id);
         if (idx === -1) return { changed: false, message: 'Activity not found.' };
@@ -770,6 +930,40 @@ function populateAssistantActivities() {
         const original = { ...activities[idx] };
         let changed = false;
         let preview = '';
+
+        // Apply structured change if provided
+        if (structured) {
+            if (structured.time) {
+                const t = structured.time;
+                if (typeof t === 'string' && /\d/.test(t)) {
+                    const m = t.match(/(\d{1,2}):?(\d{2})?/);
+                    if (m) {
+                        const hr = parseInt(m[1], 10);
+                        const min = m[2] ? parseInt(m[2], 10) : 0;
+                        updated.time = `${String(hr).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+                        changed = true;
+                    }
+                }
+            }
+            if (structured.day) {
+                const targetIdx = Math.max(0, Math.min(parseInt(structured.day, 10) - 1, (currentItinerary || []).length ? currentItinerary.length - 1 : 0));
+                if (targetIdx !== activeDayIndex) {
+                    if (!currentItinerary[targetIdx]) currentItinerary[targetIdx] = [];
+                    activities.splice(idx, 1);
+                    writeBackDayActivities(activities);
+                    currentItinerary[targetIdx].push(updated);
+                    activeDayIndex = targetIdx;
+                    saveItinerary(currentItinerary);
+                    renderItineraryUI(currentItinerary, tripDates || []);
+                    preview = `Move to Day ${targetIdx + 1}${updated.time ? ` at ${updated.time}` : ''}.`;
+                    return { changed: true, message: `Moved to Day ${targetIdx + 1}.`, preview };
+                }
+            }
+            if (structured.title) {
+                updated.title = `${structured.title} (updated)`;
+                changed = true;
+            }
+        }
 
         // Change time
         // time parsing: support 24h (HH:MM) and 12h with am/pm
@@ -848,7 +1042,7 @@ function populateAssistantActivities() {
         renderItineraryUI(currentItinerary, tripDates || []);
         if (!preview) {
             const changes = [];
-            if (original.time !== updated.time) changes.push(`Time: ${original.time || 'TBD'} → ${updated.time}`);
+            if (original.time !== updated.time) changes.push(`Time: ${original.time || 'TBD'} -> ${updated.time}`);
             if (original.title !== updated.title) changes.push(`Title updated`);
             preview = changes.length ? changes.join(' | ') : 'Change applied.';
         }
@@ -858,8 +1052,8 @@ function populateAssistantActivities() {
     function initAssistantInline() {
         const yesBtn = document.getElementById('assistantYesBtn');
         const noBtn = document.getElementById('assistantNoBtn');
-        if (yesBtn) yesBtn.addEventListener('click', () => setAssistantMode('change'));
-        if (noBtn) noBtn.addEventListener('click', () => setAssistantMode('confirm'));
+        if (yesBtn) yesBtn.addEventListener('click', () => setAssistantMode(ASSISTANT_STATES.REFINEMENT_PICK_ACTIVITY));
+        if (noBtn) noBtn.addEventListener('click', () => confirmDayPlan());
         renderAssistantInline();
     }
 
@@ -1845,14 +2039,24 @@ function populateAssistantActivities() {
         if (btn) btn.textContent = wasBooked ? 'Mark booked' : 'Booked';
         const badge = document.querySelector(`[data-book-badge='${key}']`);
         if (badge) {
-            badge.textContent = wasBooked ? 'Requires booking' : 'Booked';
+            badge.textContent = wasBooked ? 'Booking needed' : 'Booked';
             badge.style.background = wasBooked ? 'rgba(234,179,8,0.15)' : 'rgba(22,163,74,0.15)';
             badge.style.color = wasBooked ? 'var(--accent-gold)' : 'var(--success)';
             badge.style.borderColor = wasBooked ? 'rgba(234,179,8,0.5)' : 'rgba(22,163,74,0.5)';
+            if (wasBooked) {
+                badge.classList.add('pulsing-glow');
+            } else {
+                badge.classList.remove('pulsing-glow');
+            }
         }
-        showToast(wasBooked ? 'Booking removed.' : 'Marked as booked.', 'success');
-        const remaining = getOutstandingBookings(dayNumber - 1);
-        assistantMode = remaining.length === 0 ? 'ready' : 'confirm';
+        const dayRemaining = getOutstandingBookings(dayNumber - 1);
+        if (!dayRemaining.length && !wasBooked) {
+            showToast(`Day ${dayNumber} is booked/ready.`, 'success');
+        } else {
+            showToast(wasBooked ? 'Booking removed.' : 'Marked as booked.', 'success');
+        }
+        const remaining = getAllOutstandingBookings();
+        assistantMode = remaining.length === 0 ? ASSISTANT_STATES.TOUR_GUIDE_READY : ASSISTANT_STATES.BOOKING_ALERT;
         renderBookingList();
         renderItineraryUI(currentItinerary, tripDates || []);
         renderAssistantInline();
@@ -2779,7 +2983,10 @@ function populateAssistantActivities() {
                     ? `<span class="route-chip" data-day="${dayNumber}" data-idx="${idx}" data-lat="${activity.lat}" data-lng="${activity.lng}" data-prev-lat="${origin.lat}" data-prev-lng="${origin.lng}" title="Distance & duration">Route…</span>`
                     : '';
                 const bookingBadge = activity.requiresBooking
-                    ? `<span class="activity-badge" data-book-badge="${bookingKey}" style="background:${booked ? 'rgba(22,163,74,0.15)' : 'rgba(234,179,8,0.15)'}; color:${booked ? 'var(--success)' : 'var(--accent-gold)'}; border:1px solid ${booked ? 'rgba(22,163,74,0.5)' : 'rgba(234,179,8,0.5)'};">${booked ? 'Booked' : 'Requires booking'}</span>`
+                    ? `<span class="activity-badge${booked ? '' : ' pulsing-glow'}" data-book-badge="${bookingKey}" style="background:${booked ? 'rgba(22,163,74,0.15)' : 'rgba(234,179,8,0.15)'}; color:${booked ? 'var(--success)' : 'var(--accent-gold)'}; border:1px solid ${booked ? 'rgba(22,163,74,0.5)' : 'rgba(234,179,8,0.5)'};">${booked ? 'Booked' : 'Booking needed'}</span>`
+                    : '';
+                const updatedBadge = activity._recentlyUpdated
+                    ? `<span class="activity-badge" style="background:rgba(59,130,246,0.15); color:var(--accent-gold); border:1px solid rgba(59,130,246,0.5);">Updated</span>`
                     : '';
 
                 activityList += `
@@ -2787,7 +2994,7 @@ function populateAssistantActivities() {
                         
                         <div class="activity-content-wrapper">
                             <div style="flex-grow: 1; min-width: 0;">
-                                <div class="activity-title">${activity.title} ${bookingBadge}</div>
+                                <div class="activity-title">${activity.title} ${bookingBadge} ${updatedBadge}</div>
                                 <div class="activity-duration">Est. Visit: ${activity.duration || '1 hr'}</div>
                                 <div class="activity-meta-row" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:6px;">
                                     <span class="activity-timechip">${activity.time || 'TBD'}</span>
@@ -3357,12 +3564,15 @@ export {
     writeBackDayActivities,
     setAssistantMode,
     setChatFocusToDay,
+    confirmDayPlan,
     renderAssistantInline,
     populateAssistantActivities,
     renderBookingList,
     submitChangeRequest,
     handleChangeKeydown,
     confirmAssistantSave,
+    resumeAssistantChanges,
+    confirmAndFinalizeDay,
     parseRequestedDayIndex,
     applyChangeCommand,
     initAssistantInline,

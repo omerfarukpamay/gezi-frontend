@@ -22,19 +22,35 @@ window.clearSessionToken = function clearSessionToken() {
     try { sessionStorage.removeItem('auth_token'); } catch (e) {}
 };
 
-window.apiRequest = async function apiRequest(path, { method = 'GET', body } = {}) {
+window.apiRequest = async function apiRequest(path, { method = 'GET', body, retries = 2 } = {}) {
     const headers = { 'Content-Type': 'application/json' };
     const token = window.getAuthToken();
     if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(`${window.API_BASE}${path}`, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-        const msg = data?.error || data?.message || `Request failed (${res.status})`;
-        throw new Error(msg);
+
+    let attempt = 0;
+    let lastError;
+    const url = `${window.API_BASE}${path}`;
+
+    while (attempt <= retries) {
+        try {
+            const res = await fetch(url, {
+                method,
+                headers,
+                body: body ? JSON.stringify(body) : undefined
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                const msg = data?.error || data?.message || `Request failed (${res.status})`;
+                throw new Error(msg);
+            }
+            return data;
+        } catch (err) {
+            lastError = err;
+            if (attempt === retries) break;
+            const backoff = Math.min(800 * Math.pow(2, attempt), 2000);
+            await new Promise(r => setTimeout(r, backoff));
+            attempt += 1;
+        }
     }
-    return data;
+    throw lastError;
 };
