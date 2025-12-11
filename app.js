@@ -932,14 +932,11 @@
         if (target) target.classList.add('active');
 
         const headerActions = document.querySelector('.header-actions');
-        const mapBtn = document.getElementById('viewDayMapBtn');
         if (id === 'results') {
             if (headerActions) headerActions.style.display = 'flex';
-            if (mapBtn) mapBtn.style.display = 'inline-flex';
             setAssistantState('mid');
         } else {
             if (headerActions) headerActions.style.display = 'none';
-            if (mapBtn) mapBtn.style.display = 'none';
             setAssistantState('collapsed');
         }
 
