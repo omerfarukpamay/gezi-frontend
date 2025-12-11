@@ -1,3 +1,5 @@
+import './state.js';
+
 /* --------- DATA: 3 TEST EXPERIENCES ---------- */
     const experiences = [
         { id: 1, title: "Luxury Helicopter Tour", category: "Adventure", price: 3, img: "https://images.unsplash.com/photo-1540962351504-03099e0a754b?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "luxury", details: "A 30-minute private helicopter ride offering unmatched views of the Magnificent Mile and Lake Michigan.", insta: "Best shot is the tilt-shift view looking straight down at The Loop. Use a wide-angle lens!", time: "10:00", duration: "45 min", lat: 41.8842, lng: -87.6258, requiresBooking: true },
@@ -5,157 +7,26 @@
         { id: 3, title: "Alinea (3-Star Michelin)", category: "Fine Dining", price: 3, img: "https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "luxury_food", details: "World-renowned culinary experience. This is an evening activity requiring formal attire and advance booking.", insta: "Capture the artistic presentation of the floating dessert course. Use soft, directional lighting.", time: "19:00", duration: "3 hr", lat: 41.9161, lng: -87.6483, requiresBooking: true }
     ];
 
-    const USER_STORAGE_KEY = 'chicago_ai_user_v1';
-    const STORAGE_KEYS = {
-        profile: 'chicago_ai_profile_v1',
-        itinerary: 'chicago_ai_itinerary_v1',
-        trips: 'chicago_ai_trips_v1',
-        favorites: 'chicago_ai_favorites_v1',
-        settings: 'chicago_ai_settings_v1'
-    };
-
-    const DEFAULT_PROFILE = {
-        startDate: null,
-        endDate: null,
-        likedTags: [],
-        tempo: 50,
-        price: 50,
-        transportation: 50,
-        tourGuide: false,
-        avatarColor: '#EAB308',
-        city: 'Chicago'
-    };
-
     const CITY_OPTIONS = [
         { id: 'chicago', label: 'Chicago', region: 'Illinois, USA' }
     ];
 
-    /* ---------- LOCAL STORAGE HELPERS ---------- */
-    function loadUser() {
-        try {
-            const raw = localStorage.getItem(USER_STORAGE_KEY);
-            if (!raw) return null;
-            return JSON.parse(raw);
-        } catch (e) { return null; }
-    }
-    function saveUser(user) {
-        if (!user) return;
-        // avoid storing sensitive fields
-        const safe = { ...user };
-        delete safe.hash;
-        delete safe.salt;
-        try { localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(safe)); } catch (e) {}
-    }
-    const API_BASE = 'https://gezi-backend.onrender.com';
-
-    function getAuthToken() {
-        try { return sessionStorage.getItem('auth_token'); } catch (e) { return null; }
-    }
-    function setSessionToken(token) {
-        try {
-            let toStore = token;
-            if (!toStore) {
-                const arr = new Uint8Array(16);
-                crypto.getRandomValues(arr);
-                toStore = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
-            }
-            if (toStore) sessionStorage.setItem('auth_token', toStore);
-            return toStore;
-        } catch (e) { return null; }
-    }
-    function clearSessionToken() {
-        try { sessionStorage.removeItem('auth_token'); } catch (e) {}
-    }
-
-    async function apiRequest(path, { method = 'GET', body } = {}) {
-        const headers = { 'Content-Type': 'application/json' };
-        const token = getAuthToken();
-        if (token) headers.Authorization = `Bearer ${token}`;
-        const res = await fetch(`${API_BASE}${path}`, {
-            method,
-            headers,
-            body: body ? JSON.stringify(body) : undefined
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            const msg = data?.error || data?.message || `Request failed (${res.status})`;
-            throw new Error(msg);
-        }
-        return data;
-    }
-
     async function hydrateSessionFromToken() {
-        const token = getAuthToken();
+        const token = window.getAuthToken();
         if (!token) return false;
         try {
-            const { user } = await apiRequest('/api/me');
+            const { user } = await window.apiRequest('/api/me');
             currentUser = user;
-            saveUser(user);
+            window.saveUser(user);
             return true;
         } catch (e) {
-            clearSessionToken();
+            window.clearSessionToken();
             return false;
         }
     }
 
-    function loadProfile() {
-        try {
-            const raw = localStorage.getItem(STORAGE_KEYS.profile);
-            if (!raw) return { ...DEFAULT_PROFILE };
-            const saved = JSON.parse(raw);
-            return { ...DEFAULT_PROFILE, ...saved };
-        } catch (e) {
-            return { ...DEFAULT_PROFILE };
-        }
-    }
-    function saveProfile(profile) {
-        try { localStorage.setItem(STORAGE_KEYS.profile, JSON.stringify(profile)); } catch (e) {}
-    }
-    function saveItinerary(itinerary) {
-        try { localStorage.setItem(STORAGE_KEYS.itinerary, JSON.stringify(itinerary)); } catch (e) {}
-    }
-    function loadItinerary() {
-        try {
-            const raw = localStorage.getItem(STORAGE_KEYS.itinerary);
-            if (!raw) return null;
-            return JSON.parse(raw);
-        } catch (e) { return null; }
-    }
-    function loadTrips() {
-        try {
-            const raw = localStorage.getItem(STORAGE_KEYS.trips);
-            if (!raw) return [];
-            return JSON.parse(raw);
-        } catch (e) { return []; }
-    }
-    function saveTrips(trips) {
-        try { localStorage.setItem(STORAGE_KEYS.trips, JSON.stringify(trips)); } catch (e) {}
-    }
-    function loadFavorites() {
-        try {
-            const raw = localStorage.getItem(STORAGE_KEYS.favorites);
-            if (!raw) return [];
-            return JSON.parse(raw);
-        } catch (e) { return []; }
-    }
-    function saveFavorites(favs) {
-        try { localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify(favs)); } catch (e) {}
-    }
-    function loadSettingsStore() {
-        try {
-            const raw = localStorage.getItem(STORAGE_KEYS.settings);
-            if (!raw) return { theme: 'gold', priceAlerts: false, weatherAlerts: false, dailyReminder: false };
-            return JSON.parse(raw);
-        } catch (e) {
-            return { theme: 'gold', priceAlerts: false, weatherAlerts: false, dailyReminder: false };
-        }
-    }
-    function saveSettingsStore(data) {
-        try { localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(data)); } catch (e) {}
-    }
-
     let currentUser = null;
-    let userProfile = loadProfile();
+    let userProfile = window.loadProfile();
 
     let selectedDates = [];
     let likedTags = [...(userProfile.likedTags || [])];
@@ -174,9 +45,8 @@
     let currentItinerary = null;
     let tripDates = [];
     let authMode = 'login';
-    let toastTimeout = null;
-    let favorites = loadFavorites();
-    let settingsStore = loadSettingsStore();
+    let favorites = window.loadFavorites();
+    let settingsStore = window.loadSettingsStore();
     let lastAiContext = null;
     let assistantOpen = false;
     let assistantFullscreen = false;
@@ -192,10 +62,43 @@
     let activeDayIndex = 0;
     let dayMapInstance = null;
     let dayMapMarkers = null;
-    const CHECKIN_KEY = 'planner_checkins_v1';
-    const loadCheckins = () => { try { return JSON.parse(localStorage.getItem(CHECKIN_KEY)) || {}; } catch (e) { return {}; } };
-    const saveCheckins = (data) => { try { localStorage.setItem(CHECKIN_KEY, JSON.stringify(data)); } catch (e) {} };
+    const loadCheckins = window.loadCheckins;
+    const saveCheckins = window.saveCheckins;
     let checkins = loadCheckins();
+    const loadBookings = window.loadBookings;
+    const saveBookings = window.saveBookings;
+    let bookings = loadBookings();
+    let changeHistory = window.changeHistory || {};
+    const loadHistory = () => {
+        try { return JSON.parse(localStorage.getItem('planner_change_history_v1')) || {}; } catch (e) { return {}; }
+    };
+    const saveHistory = () => {
+        try { localStorage.setItem('planner_change_history_v1', JSON.stringify(changeHistory)); } catch (e) {}
+    };
+    changeHistory = loadHistory();
+    window.changeHistory = changeHistory;
+
+    function migrateStorage() {
+        const ensureArray = (label, loader, saver) => {
+            let data = loader();
+            if (!Array.isArray(data)) {
+                data = [];
+                saver(data);
+                showToast(`${label} store fixed.`, 'info');
+            }
+            return data;
+        };
+        favorites = ensureArray('Favorites', loadFavorites, saveFavorites);
+        const trips = ensureArray('Trips', loadTrips, saveTrips);
+        const cleanTrips = trips.map(t => {
+            const cleanTitle = cleanText(t.title || '');
+            const cleanSummary = cleanTextMultiline(t.summaryText || '');
+            return { ...t, title: cleanTitle, summaryText: cleanSummary };
+        });
+        saveTrips(cleanTrips);
+        bookings = loadBookings();
+        changeHistory = loadHistory();
+    }
 
     const cleanText = (str) => (str || '').replace(/[^\x09\x0A\x0D\x20-\x7E]/g, ' ').replace(/\s+/g, ' ').trim();
     const cleanTextMultiline = (str) => (str || '').replace(/[^\x09\x0A\x0D\x20-\x7E]/g, ' ').replace(/[ ]{2,}/g, ' ').trim();
@@ -323,18 +226,7 @@
     }
 
     /* ---------- TOAST ---------- */
-    function showToast(message, type = 'info') {
-        const toast = document.getElementById('toast');
-        if (!toast) return;
-        toast.textContent = message;
-        toast.className = '';
-        toast.classList.add(type);
-        toast.classList.add('show');
-        clearTimeout(toastTimeout);
-        toastTimeout = setTimeout(() => {
-            toast.classList.remove('show');
-        }, 2800);
-    }
+    const showToast = window.showToast;
 
     /* ---------- ASSISTANT & CHAT (AI toggle gated) ---------- */
     function updateAiUiVisibility() {
@@ -628,7 +520,9 @@
         }
         if (assistantMode === 'chat' && assistantSelectedActivity) {
             if (assistantPendingSave) {
-                chatPrompt.textContent = `Changes made. Save changes?`;
+                chatPrompt.innerHTML = assistantLastChangeMessage
+                    ? `Confirm change: ${assistantLastChangeMessage}`
+                    : 'Changes made. Save changes?';
                 if (saveActions) saveActions.style.display = 'flex';
                 if (chatInputRow) chatInputRow.style.display = 'none';
             } else {
@@ -692,6 +586,14 @@
             link.target = '_blank';
             link.rel = 'noopener noreferrer';
             link.textContent = act.title;
+            const booked = isBooked(activeDayIndex + 1, act.id);
+            if (booked) {
+                const badge = document.createElement('span');
+                badge.textContent = 'Booked';
+                badge.style.marginLeft = '6px';
+                badge.className = 'activity-timechip';
+                item.appendChild(badge);
+            }
             item.appendChild(link);
             bookingList.appendChild(item);
         });
@@ -732,6 +634,7 @@
             return;
         }
         assistantPendingSave = true;
+        assistantLastChangeMessage = changeResult.preview || changeResult.message;
         input.value = '';
         renderAssistantInline();
     }
@@ -748,6 +651,7 @@
         const saveActions = document.getElementById('assistantSaveActions');
         if (accept) {
             showToast('Changes saved.', 'success');
+            recordChange(activeDayIndex, assistantLastChangeMessage || 'Assistant change', assistantLastSnapshot);
             setChatFocusToDay(activeDayIndex);
         } else if (assistantLastSnapshot) {
             currentItinerary[activeDayIndex] = JSON.parse(assistantLastSnapshot);
@@ -764,17 +668,24 @@
         renderAssistantInline();
     }
 
-    // Legacy assistant drawer stubs (disabled)
-    function showAssistant() { return; }
-    function hideAssistant() { return; }
-    function renderAssistantState() { return; }
-    function expandAssistantFull() { return; }
-    function dockAssistant() { return; }
-    function setAssistantState(state) { assistantState = state; return; }
-    function startSheetDrag() { return; }
-    function onSheetDragMove() { return; }
-    function onSheetDragEnd() { return; }
-    function handleAssistantTap() { return; }
+    function undoLastChange(dayIdx = activeDayIndex) {
+        const idx = Math.max(0, Math.min(dayIdx, (currentItinerary || []).length - 1));
+        const history = changeHistory[idx];
+        if (!history || !history.length) {
+            showToast('No changes to undo.', 'info');
+            return;
+        }
+        const last = history.pop();
+        saveHistory();
+        try {
+            currentItinerary[idx] = JSON.parse(last.snapshot);
+            saveItinerary(currentItinerary);
+            renderItineraryUI(currentItinerary, tripDates || []);
+            showToast('Reverted last change.', 'success');
+        } catch (e) {
+            showToast('Could not undo.', 'error');
+        }
+    }
 
     // Apply change commands to itinerary
     function parseRequestedDayIndex(text) {
@@ -821,7 +732,9 @@
         if (idx === -1) return { changed: false, message: 'Activity not found.' };
 
         const updated = { ...activities[idx] };
+        const original = { ...activities[idx] };
         let changed = false;
+        let preview = '';
 
         // Change time
         // time parsing: support 24h (HH:MM) and 12h with am/pm
@@ -856,7 +769,8 @@
                 activeDayIndex = targetIdx;
                 saveItinerary(currentItinerary);
                 renderItineraryUI(currentItinerary, tripDates || []);
-                return { changed: true, message: `Moved to Day ${targetIdx + 1}.` };
+                preview = `Move to Day ${targetIdx + 1}${updated.time ? ` at ${updated.time}` : ''}.`;
+                return { changed: true, message: `Moved to Day ${targetIdx + 1}.`, preview };
             }
         }
 
@@ -870,7 +784,8 @@
                 writeBackDayActivities(activities);
                 saveItinerary(currentItinerary);
                 renderItineraryUI(currentItinerary, tripDates || []);
-                return { changed: true, message: 'Swapped order.' };
+                preview = `Swap ${updated.title} with ${swapWith.title}.`;
+                return { changed: true, message: 'Swapped order.', preview };
             }
         }
 
@@ -896,7 +811,13 @@
         writeBackDayActivities(activities);
         saveItinerary(currentItinerary);
         renderItineraryUI(currentItinerary, tripDates || []);
-        return { changed: true, message: 'Change applied.' };
+        if (!preview) {
+            const changes = [];
+            if (original.time !== updated.time) changes.push(`Time: ${original.time || 'TBD'} → ${updated.time}`);
+            if (original.title !== updated.title) changes.push(`Title updated`);
+            preview = changes.length ? changes.join(' | ') : 'Change applied.';
+        }
+        return { changed: true, message: 'Change applied.', preview };
     }
 
     function initAssistantInline() {
@@ -1539,13 +1460,13 @@
         if (hasError) return;
 
         try {
-            const { token, user } = await apiRequest('/api/login', {
+            const { token, user } = await window.apiRequest('/api/login', {
                 method: 'POST',
                 body: { email, password }
             });
-            setSessionToken(token);
+            window.setSessionToken(token);
             currentUser = user;
-            saveUser(user);
+            window.saveUser(user);
         } catch (err) {
             loginError.textContent = err.message || 'Login failed.';
             return;
@@ -1635,13 +1556,13 @@
         userProfile.tourGuide = tourGuidePref;
 
         try {
-            const { token, user } = await apiRequest('/api/register', {
+            const { token, user } = await window.apiRequest('/api/register', {
                 method: 'POST',
                 body: { firstName, lastName, email, password }
             });
-            setSessionToken(token);
+            window.setSessionToken(token);
             currentUser = user;
-            saveUser(user);
+            window.saveUser(user);
         } catch (err) {
             showToast(err.message || 'Sign up failed.', 'error');
             return;
@@ -1739,6 +1660,18 @@
         favorites = favorites.filter(f => f.id !== id);
         saveFavorites(favorites);
         renderFavorites();
+        showToast('Removed from saved places.', 'info');
+    }
+
+    function recordChange(dayIdx, note, snapshot) {
+        const idx = Math.max(0, dayIdx || 0);
+        if (!changeHistory[idx]) changeHistory[idx] = [];
+        changeHistory[idx].push({
+            note: note || 'Change applied',
+            snapshot: snapshot || JSON.stringify(currentItinerary[idx] || []),
+            ts: Date.now()
+        });
+        saveHistory();
     }
 
     const HOLD_MS = 2000;
@@ -1842,11 +1775,31 @@
         lastAiContext = buildChatContext(dayNumber, activity, 'completed', null, null);
 
         if (userProfile.tourGuide) {
-            showAssistant(`<strong>Completed:</strong> ${activity.title}<br><div style="margin-top:6px;">Logged. Want me to adjust timing or suggest what’s next?</div>`);
+            showAssistant(`<strong>Completed:</strong> ${activity.title}<br><div style="margin-top:6px;">Logged. Want me to adjust timing or suggest what's next?</div>`);
             renderAssistantState(buildAssistantContext());
         } else {
             showToast('Marked complete.', 'success');
         }
+    }
+
+    function isBooked(dayNumber, activityId) {
+        return !!bookings[`${dayNumber}-${activityId}`];
+    }
+
+    function toggleBooking(dayNumber, activityId, evt) {
+        if (evt) evt.stopPropagation();
+        const key = `${dayNumber}-${activityId}`;
+        const wasBooked = !!bookings[key];
+        if (wasBooked) {
+            delete bookings[key];
+        } else {
+            bookings[key] = { ts: Date.now() };
+        }
+        saveBookings(bookings);
+        const btn = document.querySelector(`[data-book-btn='${key}']`);
+        if (btn) btn.textContent = wasBooked ? 'Mark booked' : 'Booked';
+        showToast(wasBooked ? 'Booking removed.' : 'Marked as booked.', 'success');
+        renderBookingList();
     }
 
     function fillEditForm(fullName, avatarColor) {
@@ -1901,7 +1854,7 @@
     function logout() {
         currentUser = null;
         try { localStorage.removeItem(USER_STORAGE_KEY); } catch (e) {}
-        clearSessionToken();
+        window.clearSessionToken();
         const profileMenu = document.getElementById('profileMenu');
         if (profileMenu) profileMenu.style.display = 'none';
         clearPlannerState();
@@ -2237,6 +2190,95 @@
         showToast('Tour guide preference updated.', 'success');
     }
 
+    function exportUserData() {
+        const payload = {
+            version: 1,
+            exportedAt: new Date().toISOString(),
+            profile: userProfile,
+            settings: settingsStore,
+            favorites,
+            trips: loadTrips()
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'planner-export.json';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+        showToast('Data exported as JSON.', 'success');
+    }
+
+    function openImportData() {
+        const input = document.getElementById('importDataInput');
+        if (input) input.click();
+    }
+
+    function handleImportData(event) {
+        const file = event?.target?.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const data = JSON.parse(reader.result);
+                if (!data || typeof data !== 'object') throw new Error('Invalid file');
+                if (Array.isArray(data.favorites)) {
+                    favorites = data.favorites;
+                    saveFavorites(favorites);
+                }
+                if (Array.isArray(data.trips)) {
+                    saveTrips(data.trips);
+                }
+                if (data.profile) {
+                    userProfile = { ...DEFAULT_PROFILE, ...data.profile };
+                    saveProfile(userProfile);
+                }
+                if (data.settings) {
+                    settingsStore = { ...settingsStore, ...data.settings };
+                    saveSettingsStore(settingsStore);
+                    applyTheme(settingsStore.theme || 'gold', false);
+                }
+                populateProfileUI();
+                renderTripsOnProfile();
+                hydratePlannerInputsFromProfile();
+                showToast('Data imported.', 'success');
+            } catch (e) {
+                console.error(e);
+                showToast('Import failed. Invalid file.', 'error');
+            } finally {
+                event.target.value = '';
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    async function syncDataNow() {
+        const trips = loadTrips();
+        if (!currentUser && !window.getAuthToken()) {
+            showToast('Log in to sync with cloud.', 'info');
+            return;
+        }
+        try {
+            const res = await window.apiRequest('/api/sync', {
+                method: 'POST',
+                body: { trips, favorites }
+            });
+            if (res?.trips && Array.isArray(res.trips)) {
+                saveTrips(res.trips);
+                renderTripsOnProfile();
+            }
+            if (res?.favorites && Array.isArray(res.favorites)) {
+                favorites = res.favorites;
+                saveFavorites(favorites);
+                renderFavorites();
+            }
+            showToast('Sync complete.', 'success');
+        } catch (e) {
+            console.error(e);
+            showToast(e.message || 'Sync failed. Using local data.', 'error');
+        }
+    }
+
     /* ---------- ITINERARY ---------- */
     const LOOP_COORDS = { lat: 41.8781, lng: -87.6298 };
 
@@ -2245,6 +2287,64 @@
         if (val >= 70) return 'private';
         if (val >= 40) return 'rideshare';
         return 'walk';
+    }
+
+    const routeCache = {};
+
+    async function fetchRouteInfo(origin, destination) {
+        if (!origin || !destination || !origin.lat || !origin.lng || !destination.lat || !destination.lng) return null;
+        const key = `${origin.lat},${origin.lng}->${destination.lat},${destination.lng}`;
+        if (routeCache[key]) return routeCache[key];
+        const fallback = () => {
+            const distanceKm = haversineDistanceKm(origin, destination);
+            const durationMin = estimateTravelMinutes(distanceKm, getTransportMode());
+            return { distanceKm, durationMin, source: 'approx' };
+        };
+        try {
+            const url = `https://router.project-osrm.org/route/v1/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}?overview=false`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('route fetch failed');
+            const data = await res.json();
+            const leg = data?.routes?.[0]?.legs?.[0];
+            if (!leg) throw new Error('no leg');
+            const distanceKm = Math.round((leg.distance || 0) / 10) / 100;
+            const durationMin = Math.round((leg.duration || 0) / 60);
+            routeCache[key] = { distanceKm, durationMin, source: 'live' };
+            return routeCache[key];
+        } catch (e) {
+            const approx = fallback();
+            routeCache[key] = approx;
+            return approx;
+        }
+    }
+
+    async function updateRouteChips(dayNumber) {
+        const chips = document.querySelectorAll(`.route-chip[data-day='${dayNumber}']`);
+        for (const chip of chips) {
+            const prevLat = parseFloat(chip.dataset.prevLat);
+            const prevLng = parseFloat(chip.dataset.prevLng);
+            const lat = parseFloat(chip.dataset.lat);
+            const lng = parseFloat(chip.dataset.lng);
+            const idx = parseInt(chip.dataset.idx, 10);
+            if (Number.isNaN(lat) || Number.isNaN(lng) || Number.isNaN(prevLat) || Number.isNaN(prevLng)) {
+                chip.textContent = 'Route n/a';
+                continue;
+            }
+            chip.textContent = 'Routing...';
+            const info = await fetchRouteInfo({ lat: prevLat, lng: prevLng }, { lat, lng });
+            if (!info) {
+                chip.textContent = 'Route n/a';
+                continue;
+            }
+            const distanceLabel = `${info.distanceKm.toFixed(1)} km`;
+            const durationLabel = `${info.durationMin || 0} min`;
+            chip.textContent = `${distanceLabel} • ${durationLabel}`;
+            chip.dataset.source = info.source;
+            if (currentItinerary && currentItinerary[dayNumber - 1] && currentItinerary[dayNumber - 1][idx]) {
+                currentItinerary[dayNumber - 1][idx]._lastDistance = distanceLabel;
+                currentItinerary[dayNumber - 1][idx]._lastDuration = durationLabel;
+            }
+        }
     }
 
     function haversineDistanceKm(a, b) {
@@ -2457,6 +2557,7 @@
                 viewDayMapBtn.innerHTML = `<i class="fa-solid fa-map-location-dot"></i> Day ${idx + 1} Map (${(itinerary[idx] || []).length})`;
             }
             renderAssistantInline();
+            updateRouteChips(idx + 1);
         };
 
         if (dayTabs) {
@@ -2493,12 +2594,17 @@
     }
 
     function buildTripSummary(itinerary, dates = []) {
-        let summary = 'Trip Plan to Share:\n';
+        const tempo = userPreferences.tempo ?? '-';
+        const price = userPreferences.price ?? '-';
+        const transport = userPreferences.transportation ?? '-';
+        let summary = `Trip Plan to Share (Tempo ${tempo} | Price ${price} | Transport ${transport}):\n`;
         itinerary.forEach((day, idx) => {
             const datePart = dates[idx] ? dates[idx].toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }) : `Day ${idx + 1}`;
             summary += `${datePart}:\n`;
             day.slice(0, 3).forEach(a => {
-                summary += ` - ${a.title}${a.time ? ' at ' + a.time : ''}\n`;
+                const distance = a._lastDistance ? ` • ${a._lastDistance}` : '';
+                const duration = a._lastDuration ? ` • ${a._lastDuration}` : '';
+                summary += ` - ${a.title}${a.time ? ' at ' + a.time : ''}${distance}${duration}\n`;
             });
         });
         return summary;
@@ -2578,8 +2684,18 @@
         const dateStr = date.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
         
         let activityList = '';
+        let alertBanner = '';
 
         if (userPreferences.tourGuide && weather.desc === 'Rainy') {
+            alertBanner = `
+                <div class="weather-alert" style="background: rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.4); padding:10px; border-radius:10px; margin-bottom:8px;">
+                    <strong>Rain alert for Day ${dayNumber}.</strong>
+                    <div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">
+                        <button class="assistant-chip" onclick="skipNextStop(this)">Skip next stop</button>
+                        <button class="assistant-chip" onclick="moveNextToTomorrow(this)">Delay to tomorrow</button>
+                        <button class="assistant-chip" onclick="suggestNearbyFood(this)">Nearby food option</button>
+                    </div>
+                </div>`;
             showAssistant(`<strong>Rain alert for Day ${dayNumber}:</strong> Placeholder indoor suggestion message.`);
         }
 
@@ -2593,16 +2709,33 @@
                     <i class="fa-solid fa-robot"></i> AI Tour Guide is ready. Long-press "Arrived" or "Completed" for 2s to send a signal.
                 </div>`;
             }
-            dayPlan.forEach(activity => {
+            dayPlan.forEach((activity, idx) => {
                 const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activity.title + ', Chicago')}`;
+                const hasCoords = activity.lat && activity.lng;
+                const prev = idx > 0 ? dayPlan[idx - 1] : null;
+                const origin = prev && prev.lat && prev.lng ? prev : LOOP_COORDS;
+                const bookingKey = `${dayNumber}-${activity.id}`;
+                const booked = isBooked(dayNumber, activity.id);
+                const directionsUrl = hasCoords
+                    ? `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${activity.lat},${activity.lng}`
+                    : mapsUrl;
+                const routeChip = hasCoords
+                    ? `<span class="route-chip" data-day="${dayNumber}" data-idx="${idx}" data-lat="${activity.lat}" data-lng="${activity.lng}" data-prev-lat="${origin.lat}" data-prev-lng="${origin.lng}" title="Distance & duration">Route…</span>`
+                    : '';
+                const bookingBadge = activity.requiresBooking ? `<span class="activity-badge" style="background:rgba(234,179,8,0.15); color:var(--accent-gold); border:1px solid rgba(234,179,8,0.5);">Requires booking</span>` : '';
 
                 activityList += `
                     <div class="activity-item" onclick="toggleDetails(this)">
                         
                         <div class="activity-content-wrapper">
                             <div style="flex-grow: 1; min-width: 0;">
-                                <div class="activity-title">${activity.title}</div>
+                                <div class="activity-title">${activity.title} ${bookingBadge}</div>
                                 <div class="activity-duration">Est. Visit: ${activity.duration || '1 hr'}</div>
+                                <div class="activity-meta-row" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:6px;">
+                                    <span class="activity-timechip">${activity.time || 'TBD'}</span>
+                                    <span class="activity-timechip">${activity.duration || '1 hr'}</span>
+                                    ${routeChip}
+                                </div>
                             </div>
                             ${userPreferences.tourGuide ? `
                                 <div class="activity-time-group">
@@ -2637,12 +2770,16 @@
                                 </div>
                                 
                                 <div class="details-actions">
-                                    <a href="${mapsUrl}" target="_blank" class="action-btn btn-maps">
-                                        <i class="fa-solid fa-location-dot"></i> Navigate
+                                    <a href="${directionsUrl}" target="_blank" class="action-btn btn-maps">
+                                        <i class="fa-solid fa-route"></i> Directions
                                     </a>
                                     <a href="https://feverup.com/en/chicago" target="_blank" class="action-btn btn-booking">
                                         <i class="fa-solid fa-ticket"></i> Book/Reserve
                                     </a>
+                                    ${activity.requiresBooking ? `
+                                        <button type="button" class="action-btn btn-booking" data-book-btn="${bookingKey}" onclick="event.stopPropagation(); toggleBooking(${dayNumber}, ${activity.id}, event);">
+                                            ${booked ? 'Booked' : 'Mark booked'}
+                                        </button>` : ''}
                                     <button type="button" class="action-btn btn-booking" style="color: var(--accent-gold); border-color: var(--accent-gold);" onclick="event.stopPropagation(); toggleFavorite(${activity.id});">
                                         <i class="fa-regular fa-star"></i> Save place
                                     </button>
@@ -2651,6 +2788,9 @@
                                     </button>
                                     <button type="button" class="action-btn btn-booking" onclick="event.stopPropagation(); requestAudioNarration(${dayNumber}, ${activity.id});">
                                         <i class="fa-solid fa-headphones"></i> Audio Narration
+                                    </button>
+                                    <button type="button" class="action-btn btn-booking" onclick="event.stopPropagation(); exportActivityToCalendar(${dayNumber}, ${activity.id});">
+                                        <i class="fa-solid fa-calendar-plus"></i> Calendar
                                     </button>
                                 </div>
                                 <div class="gemini-output" id="guide-${dayNumber}-${activity.id}" style="margin-top:8px; font-size:0.85rem; color: var(--secondary-text);">
@@ -2668,6 +2808,7 @@
 
         return `
             <div class="day-content">
+                ${alertBanner}
                 ${activityList}
             </div>
         `;
@@ -2721,6 +2862,39 @@
         const cite = document.getElementById(`citations-${dayNumber}-${activityId}`);
         if (out) out.textContent = 'Audio narration (TTS) placeholder. Connect to backend to play.';
         if (cite) cite.textContent = 'Citations: TTS source.';
+    }
+
+    function exportActivityToCalendar(dayNumber, activityId) {
+        const day = currentItinerary && currentItinerary[dayNumber - 1];
+        const activity = day ? day.find(a => a.id === activityId) : null;
+        if (!activity) return showToast('Activity not found.', 'error');
+        const date = tripDates && tripDates[dayNumber - 1] ? new Date(tripDates[dayNumber - 1]) : new Date();
+        const start = new Date(date);
+        if (activity.time) {
+            const [hr, min] = activity.time.split(':').map(v => parseInt(v, 10) || 0);
+            start.setHours(hr, min || 0, 0, 0);
+        }
+        const end = new Date(start.getTime() + (durationToMinutes(activity.duration) || 60) * 60000);
+        const fmt = (d) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+        const ics = [
+            'BEGIN:VCALENDAR',
+            'VERSION:2.0',
+            'BEGIN:VEVENT',
+            `DTSTART:${fmt(start)}`,
+            `DTEND:${fmt(end)}`,
+            `SUMMARY:${activity.title}`,
+            `DESCRIPTION:${activity.details || 'Chicago AI Planner activity'}`,
+            'END:VEVENT',
+            'END:VCALENDAR'
+        ].join('\\r\\n');
+        const blob = new Blob([ics], { type: 'text/calendar' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${activity.title || 'activity'}.ics`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+        showToast('Calendar file ready.', 'success');
     }
 
     // ----- AI PROXY CALL -----
@@ -3044,6 +3218,7 @@
 
     /* ---------- INITIALIZE ---------- */
     document.addEventListener('DOMContentLoaded', async () => {
+        migrateStorage();
         // sanitize stored trips once to remove bad characters
         const trips = loadTrips();
         let tripsChanged = false;
@@ -3090,5 +3265,179 @@
         initAssistantInline();
     });
 
+export {
+    experiences,
+    CITY_OPTIONS,
+    hydrateSessionFromToken,
+    getDayStopsWithStatus,
+    getNextStopFromContext,
+    buildDaySummary,
+    buildDayScheduleDetailed,
+    swapCurrentToTomorrow,
+    isOutdoor,
+    buildChatContext,
+    updateAiUiVisibility,
+    showAssistant,
+    hideAssistant,
+    renderAssistantState,
+    expandAssistantFull,
+    dockAssistant,
+    handleAssistantTap,
+    setAssistantState,
+    expandAssistantSheet,
+    collapseAssistantSheet,
+    startSheetDrag,
+    onSheetDragMove,
+    onSheetTouchMove,
+    handleSheetDrag,
+    onSheetDragEnd,
+    onSheetTouchEnd,
+    finishSheetDrag,
+    resetAssistant,
+    openAssistantChat,
+    getActiveDayActivities,
+    writeBackDayActivities,
+    setAssistantMode,
+    setChatFocusToDay,
+    renderAssistantInline,
+    populateAssistantActivities,
+    renderBookingList,
+    submitChangeRequest,
+    handleChangeKeydown,
+    confirmAssistantSave,
+    parseRequestedDayIndex,
+    applyChangeCommand,
+    initAssistantInline,
+    handleAssistantPointerStart,
+    handleAssistantPointerMove,
+    handleAssistantPointerEnd,
+    handleAssistantTouchStart,
+    handleAssistantTouchMove,
+    handleAssistantTouchEnd,
+    handleAssistantMouseDown,
+    handleAssistantMouseMove,
+    handleAssistantMouseUp,
+    appendChatBubble,
+    openChatModal,
+    closeChatModal,
+    toggleChatSize,
+    sendChatMessage,
+    handleChatKeydown,
+    handleSheetKeydown,
+    buildAssistantContext,
+    flashChip,
+    skipNextStop,
+    moveNextToTomorrow,
+    suggestNearbyFood,
+    summarizeToday,
+    populateCityOptions,
+    populateCitySelect,
+    handleCityInput,
+    initCitySelector,
+    isStartReady,
+    updateStartButtonState,
+    initPasswordToggles,
+    applyTheme,
+    saveSettingsToggle,
+    hydrateSettingsUI,
+    setActiveTab,
+    updateHeaderActionsVisibility,
+    showOnlySection,
+    toggleHeaderActionsMenu,
+    closeHeaderActionsMenu,
+    openPlannerTab,
+    openPlanner,
+    goToPlannerStart,
+    openHome,
+    openProfileTab,
+    openProfileFromMenu,
+    openPastTripsTab,
+    openPastTripsFromMenu,
+    openSettingsFromMenu,
+    logoutFromMenu,
+    toggleProfileDropdown,
+    closeProfileDropdown,
+    initSignupTourGuideToggle,
+    clearPlannerState,
+    setAuthMode,
+    populateProfileUI,
+    handleLoginSubmit,
+    handleRegisterSubmit,
+    renderTravelDNA,
+    getBadges,
+    renderBadges,
+    renderFavorites,
+    toggleFavorite,
+    removeFavorite,
+    startHold,
+    cancelHold,
+    handleCheckin,
+    handleComplete,
+    isBooked,
+    toggleBooking,
+    fillEditForm,
+    saveProfileEdit,
+    cancelProfileEdit,
+    triggerProfilePicUpload,
+    handleProfilePicSelected,
+    logout,
+    resetAllData,
+    hydratePlannerInputsFromProfile,
+    startApp,
+    switchSection,
+    startProcessing,
+    reviewProfile,
+    addLikedTag,
+    renderCards,
+    initDrag,
+    nextCard,
+    finishSwiping,
+    getRulerValue,
+    mapSelectToValue,
+    mapValueToSelect,
+    handleProfileSelectChange,
+    updateAllKnobs,
+    initRulerDrag,
+    setupEvaluationScreen,
+    toggleTourGuide,
+    toggleTourGuideFromSettings,
+    exportUserData,
+    openImportData,
+    handleImportData,
+    syncDataNow,
+    getTransportMode,
+    haversineDistanceKm,
+    estimateTravelMinutes,
+    formatMinutesToClock,
+    formatDurationLabel,
+    getDurationMinutes,
+    scoreActivityForPlan,
+    buildOptimizedItinerary,
+    getDaysArray,
+    generateItinerary,
+    renderItineraryUI,
+    copyItinerarySummary,
+    buildTripSummary,
+    copyTripSummaryById,
+    loadLastPlan,
+    generateMockItinerary,
+    renderDay,
+    toggleDetails,
+    renderAssistantPrompt,
+    requestDetailedGuide,
+    requestAudioNarration,
+    exportActivityToCalendar,
+    callAssistant,
+    refreshSuggestedToday,
+    sendChatPrompt,
+    coordsToPercent,
+    handleMainMapClick,
+    showDayMap,
+    completeCurrentTrip,
+    toggleTripDetails,
+    deleteTrip,
+    renderTripsOnProfile,
+    undoLastChange
+};
 
 

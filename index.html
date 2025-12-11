@@ -26,6 +26,7 @@
                 <button type="button" onclick="goToPlannerStart()">New Plan</button>
                 <button type="button" onclick="reviewProfile()">Refine</button>
                 <button type="button" onclick="completeCurrentTrip()">Save</button>
+                <button type="button" onclick="undoLastChange()">Undo change</button>
                 <button type="button" onclick="copyItinerarySummary()">Share</button>
                 <button type="button" onclick="openAssistantChat()">Chat</button>
             </div>
@@ -359,6 +360,19 @@
                         This planner stores your profile and trips only in this browser's local storage.
                     </div>
 
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                        <button class="btn-secondary btn" style="flex:1; min-width:150px;" onclick="exportUserData()">
+                            <i class="fa-solid fa-file-arrow-down"></i>&nbsp; Export JSON
+                        </button>
+                        <button class="btn-secondary btn" style="flex:1; min-width:150px;" onclick="openImportData()">
+                            <i class="fa-solid fa-file-arrow-up"></i>&nbsp; Import JSON
+                        </button>
+                    </div>
+                    <button class="btn-secondary btn" style="width:100%; margin-bottom:8px;" onclick="syncDataNow()">
+                        <i class="fa-solid fa-cloud-arrow-up"></i>&nbsp; Sync with cloud (beta)
+                    </button>
+                    <input type="file" id="importDataInput" accept="application/json" style="display:none;" onchange="handleImportData(event)">
+
                     <button class="btn" style="width:100%; margin-top:4px;" onclick="resetAllData()">
                         <i class="fa-solid fa-broom"></i>&nbsp; Reset All Local Data
                     </button>
@@ -536,7 +550,10 @@
 
 <script src="https://cdn.jsdelivr.net/npm/flatpickr" integrity="sha384-5JqMv4L/Xa0hfvtF06qboNdhvuYXUku9ZrhZh3bSk8VXF0A/RuSLHpLsSV9Zqhl6" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
-<script src="app.js?v=3"></script>
+<script src="api.js"></script>
+<script src="storage.js"></script>
+<script src="ui.js"></script>
+<script type="module" src="main.js"></script>
 </body>
 </html>
 
