@@ -180,6 +180,8 @@
     let lastAiContext = null;
     let assistantOpen = false;
     let assistantFullscreen = false;
+    let assistantState = 'mid'; // collapsed | mid | full
+    let assistantChatMode = false;
     let assistantDragStartY = null;
     let assistantDragActive = false;
     let dayMapInstance = null;
@@ -330,19 +332,11 @@
 
     /* ---------- ASSISTANT & CHAT (AI toggle gated) ---------- */
     function updateAiUiVisibility() {
-        const drawer = document.getElementById('assistantDrawer');
         const bar = document.getElementById('assistantBar');
-        const fab = document.getElementById('chatFab');
-        const modal = document.getElementById('chatModal');
-        const shouldShow = !!userProfile.tourGuide;
-        if (bar) bar.style.display = shouldShow ? 'flex' : 'none';
-        if (drawer) drawer.style.display = 'none';
-        if (fab) fab.style.display = 'flex';
-        if (!shouldShow && modal) modal.classList.remove('open');
+        if (bar) bar.style.display = 'flex';
     }
 
     function showAssistant(messageHtml = 'Assistant is standing by.') {
-        if (!userProfile.tourGuide) return;
         const drawer = document.getElementById('assistantDrawer');
         const bar = document.getElementById('assistantBar');
         const content = document.getElementById('assistantContent');
@@ -438,50 +432,71 @@
         const drawer = document.getElementById('assistantDrawer');
         if (!drawer) return;
         if (event.target.closest('button')) return;
-        if (!assistantOpen) {
-            showAssistant();
-            renderAssistantState(buildAssistantContext());
-            expandAssistantSheet();
-            return;
+        if (assistantState === 'collapsed') {
+            setAssistantState('mid');
+        } else if (assistantState === 'mid') {
+            setAssistantState('full');
+        } else {
+            setAssistantState('collapsed');
         }
-        collapseAssistantSheet();
     }
 
     /* ---------- BOTTOM SHEET (ASSISTANT) ---------- */
     let sheetDragStartY = null;
     let sheetStartHeight = null;
 
-    function expandAssistantSheet() {
+    function setAssistantState(state) {
+        assistantState = state;
         const drawer = document.getElementById('assistantDrawer');
         const bar = document.getElementById('assistantBar');
-        if (bar) bar.style.display = 'none';
+        const footer = document.querySelector('.assistant-drawer-footer');
+        if (bar) bar.style.display = 'flex';
         if (drawer) {
-            drawer.style.display = 'flex';
-            drawer.classList.add('open');
-            drawer.style.height = `${Math.round(window.innerHeight * 0.85)}px`;
+            drawer.style.display = 'none';
+            drawer.style.height = '';
         }
-        assistantOpen = true;
-        assistantFullscreen = false;
+        if (state === 'collapsed') {
+            if (bar) bar.style.display = 'flex';
+            assistantOpen = false;
+        } else if (state === 'mid') {
+            if (bar) bar.style.display = 'none';
+            if (drawer) {
+                drawer.style.display = 'flex';
+                drawer.classList.add('open');
+                drawer.style.height = '45vh';
+            }
+            assistantOpen = true;
+            assistantFullscreen = false;
+            assistantChatMode = false;
+            renderAssistantPrompt();
+            if (footer) footer.style.display = 'none';
+        } else if (state === 'full') {
+            if (bar) bar.style.display = 'none';
+            if (drawer) {
+                drawer.style.display = 'flex';
+                drawer.classList.add('open');
+                drawer.style.height = 'calc(100vh - 100px)';
+            }
+            assistantOpen = true;
+            assistantFullscreen = true;
+            if (footer) footer.style.display = assistantChatMode ? 'grid' : 'none';
+        }
+    }
+
+    function expandAssistantSheet() {
+        setAssistantState('full');
     }
 
     function collapseAssistantSheet() {
-        const drawer = document.getElementById('assistantDrawer');
-        const bar = document.getElementById('assistantBar');
-        if (drawer) {
-            drawer.style.display = 'none';
-            drawer.classList.remove('open');
-        }
-        if (bar) bar.style.display = 'flex';
-        assistantOpen = false;
-        assistantFullscreen = false;
+        setAssistantState('collapsed');
     }
 
     function startSheetDrag(y) {
         const drawer = document.getElementById('assistantDrawer');
         if (!drawer) return;
-        expandAssistantSheet();
+        if (assistantState === 'collapsed') setAssistantState('mid');
         sheetDragStartY = y;
-        sheetStartHeight = drawer.offsetHeight || Math.round(window.innerHeight * 0.85);
+        sheetStartHeight = drawer.offsetHeight || Math.round(window.innerHeight * 0.45);
         document.addEventListener('mousemove', onSheetDragMove);
         document.addEventListener('mouseup', onSheetDragEnd);
         document.addEventListener('touchmove', onSheetTouchMove);
@@ -500,7 +515,7 @@
         const drawer = document.getElementById('assistantDrawer');
         if (!drawer || sheetDragStartY === null || sheetStartHeight === null) return;
         const delta = sheetDragStartY - currentY;
-        const target = Math.min(window.innerHeight * 0.9, Math.max(160, sheetStartHeight + delta));
+        const target = Math.min(window.innerHeight * 0.9, Math.max(80, sheetStartHeight + delta));
         drawer.style.height = `${target}px`;
     }
 
@@ -514,11 +529,13 @@
     function finishSheetDrag() {
         const drawer = document.getElementById('assistantDrawer');
         if (drawer) {
-            const openHeight = window.innerHeight * 0.8;
-            if (drawer.offsetHeight < 220) {
-                collapseAssistantSheet();
+            const h = drawer.offsetHeight;
+            if (h < 140) {
+                setAssistantState('collapsed');
+            } else if (h < window.innerHeight * 0.65) {
+                setAssistantState('mid');
             } else {
-                drawer.style.height = `${openHeight}px`;
+                setAssistantState('full');
             }
         }
         sheetDragStartY = null;
@@ -530,10 +547,14 @@
     }
 
     function resetAssistant() {
-        const content = document.getElementById('assistantContent');
-        const actions = document.getElementById('assistantActions');
-        if (content) content.innerHTML = 'Assistant is standing by.';
-        if (actions) actions.innerHTML = '';
+        renderAssistantPrompt();
+    }
+
+    function openAssistantChat() {
+        assistantChatMode = true;
+        setAssistantState('full');
+        const footer = document.querySelector('.assistant-drawer-footer');
+        if (footer) footer.style.display = 'grid';
     }
 
     function handleAssistantPointerStart(y) {
@@ -915,9 +936,11 @@
         if (id === 'results') {
             if (headerActions) headerActions.style.display = 'flex';
             if (mapBtn) mapBtn.style.display = 'inline-flex';
+            setAssistantState('mid');
         } else {
             if (headerActions) headerActions.style.display = 'none';
             if (mapBtn) mapBtn.style.display = 'none';
+            setAssistantState('collapsed');
         }
 
         if (id === 'profile' || id === 'auth' || id === 'settings' || id === 'pastTrips') {
@@ -2165,6 +2188,32 @@
         detailBox.classList.toggle('open');
     }
 
+    function renderAssistantPrompt() {
+        const content = document.getElementById('assistantContent');
+        const actions = document.getElementById('assistantActions');
+        const footer = document.querySelector('.assistant-drawer-footer');
+        if (footer && !assistantChatMode) footer.style.display = 'none';
+        if (content) {
+            content.innerHTML = `
+                <div style="font-weight:700; margin-bottom:6px;">Do you want to change the plan?</div>
+                <div style="color: var(--secondary-text); margin-bottom:10px;">You can change the days/activities.</div>
+            `;
+        }
+        if (actions) {
+            actions.innerHTML = '';
+            const yesBtn = document.createElement('button');
+            yesBtn.className = 'assistant-chip';
+            yesBtn.textContent = 'Yes, I want to make changes';
+            yesBtn.onclick = () => showToast('Tell me what to change: day, activity, or timing.', 'info');
+            const noBtn = document.createElement('button');
+            noBtn.className = 'assistant-chip';
+            noBtn.textContent = 'No, keep & confirm the plan';
+            noBtn.onclick = () => showToast('Plan confirmed. I will keep the current schedule.', 'success');
+            actions.appendChild(yesBtn);
+            actions.appendChild(noBtn);
+        }
+    }
+
     function requestDetailedGuide(dayNumber, activityId) {
         const out = document.getElementById(`guide-${dayNumber}-${activityId}`);
         const cite = document.getElementById(`citations-${dayNumber}-${activityId}`);
@@ -2539,7 +2588,7 @@
                 const y = e.touches?.[0]?.clientY;
                 if (y !== undefined) startSheetDrag(y);
             });
-            assistantBar.addEventListener('click', () => expandAssistantSheet());
+            assistantBar.addEventListener('click', () => setAssistantState('mid'));
         }
         const assistantHeader = document.querySelector('.assistant-drawer-header');
         if (assistantHeader) {
@@ -2549,5 +2598,7 @@
                 if (y !== undefined) startSheetDrag(y);
             });
         }
+        // default assistant state when planner is ready
+        setAssistantState('collapsed');
     });
 
