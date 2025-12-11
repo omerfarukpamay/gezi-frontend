@@ -331,10 +331,12 @@
     /* ---------- ASSISTANT & CHAT (AI toggle gated) ---------- */
     function updateAiUiVisibility() {
         const drawer = document.getElementById('assistantDrawer');
+        const bar = document.getElementById('assistantBar');
         const fab = document.getElementById('chatFab');
         const modal = document.getElementById('chatModal');
         const shouldShow = !!userProfile.tourGuide;
-        if (drawer) drawer.style.display = shouldShow ? 'flex' : 'none';
+        if (bar) bar.style.display = shouldShow ? 'flex' : 'none';
+        if (drawer) drawer.style.display = 'none';
         if (fab) fab.style.display = 'flex';
         if (!shouldShow && modal) modal.classList.remove('open');
     }
@@ -342,11 +344,13 @@
     function showAssistant(messageHtml = 'Assistant is standing by.') {
         if (!userProfile.tourGuide) return;
         const drawer = document.getElementById('assistantDrawer');
+        const bar = document.getElementById('assistantBar');
         const content = document.getElementById('assistantContent');
         const actions = document.getElementById('assistantActions');
         if (!drawer || !content) return;
         content.innerHTML = messageHtml;
         if (actions) actions.innerHTML = '';
+        if (bar) bar.style.display = 'none';
         drawer.style.display = 'flex';
         drawer.classList.remove('collapsed', 'fullscreen');
         drawer.classList.add('open');
@@ -437,14 +441,99 @@
         if (!assistantOpen) {
             showAssistant();
             renderAssistantState(buildAssistantContext());
-            expandAssistantFull();
+            expandAssistantSheet();
             return;
         }
-        if (assistantFullscreen) {
-            dockAssistant();
-        } else {
-            expandAssistantFull();
+        collapseAssistantSheet();
+    }
+
+    /* ---------- BOTTOM SHEET (ASSISTANT) ---------- */
+    let sheetDragStartY = null;
+    let sheetStartHeight = null;
+
+    function expandAssistantSheet() {
+        const drawer = document.getElementById('assistantDrawer');
+        const bar = document.getElementById('assistantBar');
+        if (bar) bar.style.display = 'none';
+        if (drawer) {
+            drawer.style.display = 'flex';
+            drawer.classList.add('open');
+            drawer.style.height = `${Math.round(window.innerHeight * 0.85)}px`;
         }
+        assistantOpen = true;
+        assistantFullscreen = false;
+    }
+
+    function collapseAssistantSheet() {
+        const drawer = document.getElementById('assistantDrawer');
+        const bar = document.getElementById('assistantBar');
+        if (drawer) {
+            drawer.style.display = 'none';
+            drawer.classList.remove('open');
+        }
+        if (bar) bar.style.display = 'flex';
+        assistantOpen = false;
+        assistantFullscreen = false;
+    }
+
+    function startSheetDrag(y) {
+        const drawer = document.getElementById('assistantDrawer');
+        if (!drawer) return;
+        expandAssistantSheet();
+        sheetDragStartY = y;
+        sheetStartHeight = drawer.offsetHeight || Math.round(window.innerHeight * 0.85);
+        document.addEventListener('mousemove', onSheetDragMove);
+        document.addEventListener('mouseup', onSheetDragEnd);
+        document.addEventListener('touchmove', onSheetTouchMove);
+        document.addEventListener('touchend', onSheetTouchEnd);
+    }
+
+    function onSheetDragMove(e) {
+        handleSheetDrag(e.clientY);
+    }
+    function onSheetTouchMove(e) {
+        const y = e.touches?.[0]?.clientY;
+        if (y !== undefined) handleSheetDrag(y);
+    }
+
+    function handleSheetDrag(currentY) {
+        const drawer = document.getElementById('assistantDrawer');
+        if (!drawer || sheetDragStartY === null || sheetStartHeight === null) return;
+        const delta = sheetDragStartY - currentY;
+        const target = Math.min(window.innerHeight * 0.9, Math.max(160, sheetStartHeight + delta));
+        drawer.style.height = `${target}px`;
+    }
+
+    function onSheetDragEnd() {
+        finishSheetDrag();
+    }
+    function onSheetTouchEnd() {
+        finishSheetDrag();
+    }
+
+    function finishSheetDrag() {
+        const drawer = document.getElementById('assistantDrawer');
+        if (drawer) {
+            const openHeight = window.innerHeight * 0.8;
+            if (drawer.offsetHeight < 220) {
+                collapseAssistantSheet();
+            } else {
+                drawer.style.height = `${openHeight}px`;
+            }
+        }
+        sheetDragStartY = null;
+        sheetStartHeight = null;
+        document.removeEventListener('mousemove', onSheetDragMove);
+        document.removeEventListener('mouseup', onSheetDragEnd);
+        document.removeEventListener('touchmove', onSheetTouchMove);
+        document.removeEventListener('touchend', onSheetTouchEnd);
+    }
+
+    function resetAssistant() {
+        const content = document.getElementById('assistantContent');
+        const actions = document.getElementById('assistantActions');
+        if (content) content.innerHTML = 'Assistant is standing by.';
+        if (actions) actions.innerHTML = '';
     }
 
     function handleAssistantPointerStart(y) {
@@ -546,8 +635,9 @@
     }
 
     function sendChatMessage() {
-        if (!userProfile.tourGuide) return;
-        const input = document.getElementById('chatInput');
+        const primaryInput = document.getElementById('chatInput');
+        const sheetInput = document.getElementById('assistantSheetInput');
+        const input = (primaryInput && primaryInput.matches(':focus')) ? primaryInput : (sheetInput || primaryInput);
         if (!input) return;
         const text = input.value.trim();
         if (!text) return;
@@ -557,6 +647,12 @@
     }
 
     function handleChatKeydown(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendChatMessage();
+        }
+    }
+    function handleSheetKeydown(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             sendChatMessage();
@@ -629,23 +725,6 @@
         showAssistant(`<strong>Today:</strong><br>${lines.join('<br>')}`);
         renderAssistantState(buildAssistantContext());
         flashChip(el);
-    }
-
-    function sendChatMessage() {
-        const input = document.getElementById('chatInput');
-        if (!input) return;
-        const text = input.value.trim();
-        if (!text) return;
-        appendChatBubble(text, true);
-        input.value = '';
-        sendChatPrompt(text);
-    }
-
-    function handleChatKeydown(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendChatMessage();
-        }
     }
 
     /* ---------- ASSISTANT GESTURE BINDINGS ---------- */
@@ -1811,15 +1890,13 @@
     function renderItineraryUI(itinerary, dates) {
         tripDates = dates || tripDates || [];
         const itineraryContent = document.getElementById('itineraryContent');
-        const itineraryMeta = document.getElementById('itineraryMeta');
+        const daySummary = document.getElementById('daySummary');
         const viewDayMapBtn = document.getElementById('viewDayMapBtn');
         const dayTabs = document.getElementById('dayTabs');
 
-        const numDays = dates.length;
-        itineraryMeta.innerHTML = `${numDays} Days | AI Guide: <strong style="color: ${userPreferences.tourGuide ? 'var(--success)' : 'var(--secondary-text)'};">${userPreferences.tourGuide ? 'ON' : 'OFF'}</strong>`;
-
         itineraryContent.innerHTML = '';
         if (dayTabs) dayTabs.innerHTML = '';
+        if (daySummary) daySummary.innerHTML = '';
         if (viewDayMapBtn) viewDayMapBtn.style.display = itinerary.length ? 'inline-flex' : 'none';
 
         if (!itinerary || !itinerary.length) {
@@ -1840,6 +1917,16 @@
             itineraryContent.appendChild(dayDiv);
             const dayContent = dayDiv.querySelector('.day-content');
             if (dayContent) dayContent.classList.add('active');
+
+            if (daySummary) {
+                const d = dates[idx];
+                const weather = simulateWeather(d);
+                const dateStr = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+                daySummary.innerHTML = `
+                    <div class="date">${dateStr}</div>
+                    <div class="weather">${weather.icon} ${weather.temp} ${weather.desc}</div>
+                `;
+            }
 
             currentDayMapData.dayNumber = idx + 1;
             currentDayMapData.activities = itinerary[idx];
@@ -2036,6 +2123,18 @@
                                     <button type="button" class="action-btn btn-booking" style="color: var(--accent-gold); border-color: var(--accent-gold);" onclick="event.stopPropagation(); toggleFavorite(${activity.id});">
                                         <i class="fa-regular fa-star"></i> Save place
                                     </button>
+                                    <button type="button" class="action-btn btn-booking" onclick="event.stopPropagation(); requestDetailedGuide(${dayNumber}, ${activity.id});">
+                                        <i class="fa-solid fa-book-open-reader"></i> Detailed Guide
+                                    </button>
+                                    <button type="button" class="action-btn btn-booking" onclick="event.stopPropagation(); requestAudioNarration(${dayNumber}, ${activity.id});">
+                                        <i class="fa-solid fa-headphones"></i> Audio Narration
+                                    </button>
+                                </div>
+                                <div class="gemini-output" id="guide-${dayNumber}-${activity.id}" style="margin-top:8px; font-size:0.85rem; color: var(--secondary-text);">
+                                    LLM output will appear here.
+                                </div>
+                                <div class="gemini-citations" id="citations-${dayNumber}-${activity.id}" style="margin-top:4px; font-size:0.8rem; color: var(--muted-text);">
+                                    Citations: none.
                                 </div>
                             </div>
                         </div>
@@ -2068,6 +2167,20 @@
             }
         });
         detailBox.classList.toggle('open');
+    }
+
+    function requestDetailedGuide(dayNumber, activityId) {
+        const out = document.getElementById(`guide-${dayNumber}-${activityId}`);
+        const cite = document.getElementById(`citations-${dayNumber}-${activityId}`);
+        if (out) out.textContent = 'Detailed guide (LLM) placeholder. Connect to backend to fetch.';
+        if (cite) cite.textContent = 'Citations: sample source placeholders.';
+    }
+
+    function requestAudioNarration(dayNumber, activityId) {
+        const out = document.getElementById(`guide-${dayNumber}-${activityId}`);
+        const cite = document.getElementById(`citations-${dayNumber}-${activityId}`);
+        if (out) out.textContent = 'Audio narration (TTS) placeholder. Connect to backend to play.';
+        if (cite) cite.textContent = 'Citations: TTS source.';
     }
 
     // ----- AI PROXY CALL -----
@@ -2423,5 +2536,14 @@
         updateAiUiVisibility();
         refreshSuggestedToday();
         initSignupTourGuideToggle();
+        const assistantBar = document.getElementById('assistantBar');
+        if (assistantBar) {
+            assistantBar.addEventListener('mousedown', (e) => startSheetDrag(e.clientY));
+            assistantBar.addEventListener('touchstart', (e) => {
+                const y = e.touches?.[0]?.clientY;
+                if (y !== undefined) startSheetDrag(y);
+            });
+            assistantBar.addEventListener('click', () => expandAssistantSheet());
+        }
     });
 

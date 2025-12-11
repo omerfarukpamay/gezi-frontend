@@ -86,6 +86,11 @@
                         rgba(15, 23, 42, 0.92);
             backdrop-filter: blur(14px);
             z-index: 50;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            box-shadow: 0 10px 28px rgba(0,0,0,0.35);
         }
         .header-left { display: flex; align-items: center; gap: 10px; }
         .logo { 
@@ -103,6 +108,11 @@
             display: flex;
             align-items: center;
             gap: 10px;
+        }
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
         .version { 
             font-size: 0.7rem; 
@@ -228,6 +238,7 @@
             width: 100%;
             overflow-x: hidden;
             overflow-y: auto;
+            padding-top: 90px;
         }
 
         section {
@@ -1221,6 +1232,26 @@
             overflow-y: auto; 
             flex-grow: 1;
         }
+        .day-summary {
+            padding: 12px 16px;
+            background: rgba(12,18,32,0.92);
+            border-bottom: 1px solid rgba(148,163,184,0.25);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+        .day-summary .date {
+            font-weight: 700;
+            color: var(--primary-text);
+        }
+        .day-summary .weather {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--blueprint-blue);
+            font-weight: 700;
+        }
         .results-actions {
             padding: 6px 10px 8px;
             background: rgba(15,23,42,0.92);
@@ -1555,6 +1586,7 @@
             padding: 12px;
             background: rgba(12,18,32,0.9);
             flex: 1;
+            overflow-y: auto;
         }
         .assistant-pane .assistant-drawer-actions {
             padding: 10px 12px 12px;
@@ -1563,4 +1595,22 @@
         .assistant-pane .assistant-drawer.collapsed {
             height: 100%;
             transform: none;
+        }
+        .assistant-bar {
+            background: linear-gradient(90deg, rgba(27,35,56,0.95), rgba(20,28,48,0.9));
+            color: #e5e7eb;
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(96,105,125,0.45);
+        }
+        .assistant-drawer-footer {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            padding: 10px 12px 12px;
+            border-top: 1px solid rgba(148,163,184,0.2);
+            background: rgba(12,18,32,0.9);
         }
