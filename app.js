@@ -2988,6 +2988,9 @@ function populateAssistantActivities() {
                 const updatedBadge = activity._recentlyUpdated
                     ? `<span class="activity-badge" style="background:rgba(59,130,246,0.15); color:var(--accent-gold); border:1px solid rgba(59,130,246,0.5);">Updated</span>`
                     : '';
+                const guideSnippet = userPreferences.tourGuide
+                    ? `${weather.icon || ''} ${weather.temp || ''} ${weather.desc || ''} • Next: ${activity.time || 'TBD'} • Est. ${activity.duration || 'visit soon'}`
+                    : '';
 
                 activityList += `
                     <div class="activity-item" onclick="toggleDetails(this)">
@@ -3059,10 +3062,7 @@ function populateAssistantActivities() {
                                     </button>
                                 </div>
                                 <div class="gemini-output" id="guide-${dayNumber}-${activity.id}" style="margin-top:8px; font-size:0.85rem; color: var(--secondary-text);">
-                                    LLM output will appear here.
-                                </div>
-                                <div class="gemini-citations" id="citations-${dayNumber}-${activity.id}" style="margin-top:4px; font-size:0.8rem; color: var(--muted-text);">
-                                    Citations: none.
+                                    ${guideSnippet || 'Guide notes will show here once available.'}
                                 </div>
                             </div>
                         </div>
