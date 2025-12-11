@@ -1,4 +1,4 @@
-﻿import './state.js';
+import './state.js';
 
 /* --------- DATA: 3 TEST EXPERIENCES ---------- */
     const experiences = [
@@ -201,7 +201,7 @@
         const completedTitles = stops.filter(s => s.completed).map(s => s.title);
         const dayDate = tripDates && tripDates[dayNumber - 1] ? new Date(tripDates[dayNumber - 1]) : new Date();
         const weather = simulateWeather(dayDate);
-        const weatherDesc = `${weather.desc} ${weather.temp}`.replace(/AÃ¸C/g, 'Â°C');
+        const weatherDesc = `${weather.desc} ${weather.temp}`.replace(/AøC/g, '°C');
         return {
             status,
             dayNumber,
@@ -272,11 +272,11 @@
         let routeHtml = '';
         if (current || next || (later && later.length)) {
             routeHtml += '<div class="assistant-route">';
-            if (current) routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">Now</span><div><strong>${current.title}</strong><br><span>${current.time || 'TBD'} â€¢ ${current.duration || ''}</span></div></div>`;
-            if (next) routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">Next</span><div><strong>${next.title}</strong><br><span>${next.time || 'TBD'} â€¢ ${next.duration || ''}</span></div></div>`;
+            if (current) routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">Now</span><div><strong>${current.title}</strong><br><span>${current.time || 'TBD'} • ${current.duration || ''}</span></div></div>`;
+            if (next) routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">Next</span><div><strong>${next.title}</strong><br><span>${next.time || 'TBD'} • ${next.duration || ''}</span></div></div>`;
             if (later && later.length) {
                 later.slice(0,2).forEach((item, idx) => {
-                    routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">L${idx+1}</span><div><strong>${item.title}</strong><br><span>${item.time || 'TBD'} â€¢ ${item.duration || ''}</span></div></div>`;
+                    routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">L${idx+1}</span><div><strong>${item.title}</strong><br><span>${item.time || 'TBD'} • ${item.duration || ''}</span></div></div>`;
                 });
             }
             routeHtml += '</div>';
@@ -562,7 +562,7 @@ function writeBackDayActivities(activities) {
         const outstanding = getOutstandingBookings();
         if (!assistantPendingSave && outstanding.length === 0) {
             const today = getActiveDayActivities();
-            const agenda = today.map(a => `${a.time || 'TBD'} • ${a.title}`).join('<br>');
+            const agenda = today.map(a => `${a.time || 'TBD'} - ${a.title}`).join('<br>');
             if (questionTitle) questionTitle.textContent = 'Route ready';
             if (questionSub) questionSub.innerHTML = `All stops for Day ${activeDayIndex + 1} are booked and confirmed.<br>${agenda}`;
             if (questionActions) {
@@ -572,7 +572,8 @@ function writeBackDayActivities(activities) {
                     <button class="assistant-chip" onclick="moveNextToTomorrow(this)">Delay next</button>
                 `;
             }
-        } else if (assistantMode === 'confirm' && outstanding.length > 0) {
+        } else if (outstanding.length > 0) {
+            assistantMode = 'confirm';
             const names = outstanding.map(o => o.title).join(', ');
             if (questionTitle) questionTitle.textContent = 'Bookings needed';
             if (questionSub) questionSub.textContent = `Pending: ${names}`;
@@ -596,7 +597,7 @@ function populateAssistantActivities() {
         activities.forEach((act) => {
             const btn = document.createElement('button');
             btn.className = 'assistant-activity-btn';
-            btn.textContent = `${act.title}${act.time ? ` â€¢ ${act.time}` : ''}`;
+            btn.textContent = `${act.title}${act.time ? ` • ${act.time}` : ''}`;
             btn.addEventListener('click', () => {
                 assistantSelectedActivity = act;
                 assistantMode = 'chat';
@@ -847,7 +848,7 @@ function populateAssistantActivities() {
         renderItineraryUI(currentItinerary, tripDates || []);
         if (!preview) {
             const changes = [];
-            if (original.time !== updated.time) changes.push(`Time: ${original.time || 'TBD'} â†’ ${updated.time}`);
+            if (original.time !== updated.time) changes.push(`Time: ${original.time || 'TBD'} → ${updated.time}`);
             if (original.title !== updated.title) changes.push(`Title updated`);
             preview = changes.length ? changes.join(' | ') : 'Change applied.';
         }
@@ -1776,7 +1777,7 @@ function populateAssistantActivities() {
                 <strong>Arrived:</strong> ${activity.title}<br>
                 ${timingNote}<br>
                 <div style="margin-top:6px;">
-                    <div><em>${duration} â€¢ Planned at ${sched}</em></div>
+                    <div><em>${duration} • Planned at ${sched}</em></div>
                     ${detail ? `<div>${detail}</div>` : ''}
                     ${insta ? `<div>${insta}</div>` : ''}
                 </div>
@@ -1816,25 +1817,33 @@ function populateAssistantActivities() {
         }
     }
 
-            function isBooked(dayNumber, activityId) {
+    function getPlanKey() {
+        if (userProfile.startDate && userProfile.endDate) {
+            return `${userProfile.startDate}|${userProfile.endDate}`;
+        }
+        if (selectedDates && selectedDates.length === 2) {
+            return `${selectedDates[0].toISOString()}|${selectedDates[1].toISOString()}`;
+        }
+        return 'plan';
+    }
+
+    function isBooked(dayNumber, activityId) {
         const key = `${dayNumber}-${activityId}`;
         const entry = bookings[key];
-        const planKey = getPlanKey();
         const day = currentItinerary && currentItinerary[dayNumber - 1];
         const activity = day ? day.find(a => a.id === activityId) : null;
-        const matchesPlan = entry && entry.planKey === planKey;
+        const matchesPlan = entry && entry.planKey === getPlanKey();
         return (!!entry && matchesPlan) || !!activity?._bookingDone;
     }
 
     function toggleBooking(dayNumber, activityId, evt) {
         if (evt) evt.stopPropagation();
         const key = `${dayNumber}-${activityId}`;
-        const wasBooked = !!bookings[key];
-        const planKey = getPlanKey();
+        const wasBooked = !!bookings[key] && bookings[key].planKey === getPlanKey();
         if (wasBooked) {
             delete bookings[key];
         } else {
-            bookings[key] = { ts: Date.now(), planKey };
+            bookings[key] = { ts: Date.now(), planKey: getPlanKey() };
         }
         saveBookings(bookings);
         const day = currentItinerary && currentItinerary[dayNumber - 1];
@@ -1853,12 +1862,13 @@ function populateAssistantActivities() {
         }
         showToast(wasBooked ? 'Booking removed.' : 'Marked as booked.', 'success');
         const remaining = getOutstandingBookings(dayNumber - 1);
-        assistantMode = remaining.length === 0 ? 'change' : 'confirm';
+        assistantMode = remaining.length === 0 ? 'ready' : 'confirm';
         renderBookingList();
+        renderItineraryUI(currentItinerary, tripDates || []);
         renderAssistantInline();
     }
 
-    function fillEditForm(fullName, avatarColor) {(fullName, avatarColor) {
+    function fillEditForm(fullName, avatarColor) {
         const first = document.getElementById('editFirstName');
         const last = document.getElementById('editLastName');
         const email = document.getElementById('editEmail');
@@ -2394,7 +2404,7 @@ function populateAssistantActivities() {
             }
             const distanceLabel = `${info.distanceKm.toFixed(1)} km`;
             const durationLabel = `${info.durationMin || 0} min`;
-            chip.textContent = `${distanceLabel} â€¢ ${durationLabel}`;
+            chip.textContent = `${distanceLabel} • ${durationLabel}`;
             chip.dataset.source = info.source;
             if (currentItinerary && currentItinerary[dayNumber - 1] && currentItinerary[dayNumber - 1][idx]) {
                 currentItinerary[dayNumber - 1][idx]._lastDistance = distanceLabel;
@@ -2658,8 +2668,8 @@ function populateAssistantActivities() {
             const datePart = dates[idx] ? dates[idx].toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }) : `Day ${idx + 1}`;
             summary += `${datePart}:\n`;
             day.slice(0, 3).forEach(a => {
-                const distance = a._lastDistance ? ` â€¢ ${a._lastDistance}` : '';
-                const duration = a._lastDuration ? ` â€¢ ${a._lastDuration}` : '';
+                const distance = a._lastDistance ? ` • ${a._lastDistance}` : '';
+                const duration = a._lastDuration ? ` • ${a._lastDuration}` : '';
                 summary += ` - ${a.title}${a.time ? ' at ' + a.time : ''}${distance}${duration}\n`;
             });
         });
@@ -2776,7 +2786,7 @@ function populateAssistantActivities() {
                     ? `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${activity.lat},${activity.lng}`
                     : mapsUrl;
                 const routeChip = hasCoords
-                    ? `<span class="route-chip" data-day="${dayNumber}" data-idx="${idx}" data-lat="${activity.lat}" data-lng="${activity.lng}" data-prev-lat="${origin.lat}" data-prev-lng="${origin.lng}" title="Distance & duration">Routeâ€¦</span>`
+                    ? `<span class="route-chip" data-day="${dayNumber}" data-idx="${idx}" data-lat="${activity.lat}" data-lng="${activity.lng}" data-prev-lat="${origin.lat}" data-prev-lng="${origin.lng}" title="Distance & duration">Route…</span>`
                     : '';
                 const bookingBadge = activity.requiresBooking
                     ? `<span class="activity-badge" data-book-badge="${bookingKey}" style="background:${booked ? 'rgba(22,163,74,0.15)' : 'rgba(234,179,8,0.15)'}; color:${booked ? 'var(--success)' : 'var(--accent-gold)'}; border:1px solid ${booked ? 'rgba(22,163,74,0.5)' : 'rgba(234,179,8,0.5)'};">${booked ? 'Booked' : 'Requires booking'}</span>`
@@ -2997,7 +3007,7 @@ function populateAssistantActivities() {
             listEl.innerHTML = lines.map(line => {
                 const timeMatch = line.match(/(\d{1,2}:\d{2})/);
                 const time = timeMatch ? timeMatch[1] : '--:--';
-                const title = line.replace(/^\s*\d{1,2}:\d{2}\s*[-â€“â€”:]\s*/, '').replace(/^[\-\d\.\)\s]+/, '').trim() || line;
+                const title = line.replace(/^\s*\d{1,2}:\d{2}\s*[-–—:]\s*/, '').replace(/^[\-\d\.\)\s]+/, '').trim() || line;
                 return `<div class="hero-card-line"><span>${time}</span><strong>${title}</strong></div>`;
             }).join('');
             metaEl.textContent = `Profile: Tempo ${userPreferences.tempo} | Price ${userPreferences.price} | Transport ${userPreferences.transportation}`;
@@ -3022,7 +3032,7 @@ function populateAssistantActivities() {
             return travelHints.some(k => t.includes(k));
         };
         if (!isTravelRelated(userText)) {
-            appendChatBubble('Iâ€™m here to help with your Chicago tripâ€”ask about your itinerary, days, times, places, bookings, or directions.', false);
+            appendChatBubble('I’m here to help with your Chicago trip—ask about your itinerary, days, times, places, bookings, or directions.', false);
             return;
         }
         try {
@@ -3497,6 +3507,7 @@ export {
     renderTripsOnProfile,
     undoLastChange
 };
+
 
 
 
