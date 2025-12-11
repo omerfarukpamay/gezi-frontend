@@ -1817,16 +1817,6 @@ function populateAssistantActivities() {
         }
     }
 
-    function getPlanKey() {
-        if (userProfile.startDate && userProfile.endDate) {
-            return `${userProfile.startDate}|${userProfile.endDate}`;
-        }
-        if (selectedDates && selectedDates.length === 2) {
-            return `${selectedDates[0].toISOString()}|${selectedDates[1].toISOString()}`;
-        }
-        return 'plan';
-    }
-
     function isBooked(dayNumber, activityId) {
         const key = `${dayNumber}-${activityId}`;
         const entry = bookings[key];
