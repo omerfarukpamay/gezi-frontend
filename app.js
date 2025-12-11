@@ -1,4 +1,4 @@
-import './state.js';
+﻿import './state.js';
 
 /* --------- DATA: 3 TEST EXPERIENCES ---------- */
     const experiences = [
@@ -201,7 +201,7 @@ import './state.js';
         const completedTitles = stops.filter(s => s.completed).map(s => s.title);
         const dayDate = tripDates && tripDates[dayNumber - 1] ? new Date(tripDates[dayNumber - 1]) : new Date();
         const weather = simulateWeather(dayDate);
-        const weatherDesc = `${weather.desc} ${weather.temp}`.replace(/AøC/g, '°C');
+        const weatherDesc = `${weather.desc} ${weather.temp}`.replace(/AÃ¸C/g, 'Â°C');
         return {
             status,
             dayNumber,
@@ -272,11 +272,11 @@ import './state.js';
         let routeHtml = '';
         if (current || next || (later && later.length)) {
             routeHtml += '<div class="assistant-route">';
-            if (current) routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">Now</span><div><strong>${current.title}</strong><br><span>${current.time || 'TBD'} • ${current.duration || ''}</span></div></div>`;
-            if (next) routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">Next</span><div><strong>${next.title}</strong><br><span>${next.time || 'TBD'} • ${next.duration || ''}</span></div></div>`;
+            if (current) routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">Now</span><div><strong>${current.title}</strong><br><span>${current.time || 'TBD'} â€¢ ${current.duration || ''}</span></div></div>`;
+            if (next) routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">Next</span><div><strong>${next.title}</strong><br><span>${next.time || 'TBD'} â€¢ ${next.duration || ''}</span></div></div>`;
             if (later && later.length) {
                 later.slice(0,2).forEach((item, idx) => {
-                    routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">L${idx+1}</span><div><strong>${item.title}</strong><br><span>${item.time || 'TBD'} • ${item.duration || ''}</span></div></div>`;
+                    routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">L${idx+1}</span><div><strong>${item.title}</strong><br><span>${item.time || 'TBD'} â€¢ ${item.duration || ''}</span></div></div>`;
                 });
             }
             routeHtml += '</div>';
@@ -473,7 +473,21 @@ import './state.js';
         return currentItinerary[idx] || [];
     }
 
-    function writeBackDayActivities(activities) {
+        function getPlanKey() {
+        if (userProfile.startDate && userProfile.endDate) {
+            return `${userProfile.startDate}|${userProfile.endDate}`;
+        }
+        if (selectedDates && selectedDates.length === 2) {
+            return `${selectedDates[0].toISOString()}|${selectedDates[1].toISOString()}`;
+        }
+        return 'plan';
+    }
+
+    function getOutstandingBookings(dayIdx = activeDayIndex) {
+        const activities = currentItinerary && currentItinerary[dayIdx] ? currentItinerary[dayIdx] : [];
+        return activities.filter(a => a.requiresBooking && !isBooked(dayIdx + 1, a.id));
+    }
+function writeBackDayActivities(activities) {
         if (!currentItinerary || !currentItinerary.length) return;
         currentItinerary[activeDayIndex] = activities;
     }
@@ -508,6 +522,10 @@ import './state.js';
         const bookingList = document.getElementById('assistantBookingList');
         const saveActions = document.getElementById('assistantSaveActions');
         const chatInputRow = document.querySelector('.assistant-chat-input');
+        const question = document.querySelector('.assistant-question');
+        const questionTitle = question?.querySelector('.assistant-title');
+        const questionSub = question?.querySelector('.assistant-sub');
+        const questionActions = question?.querySelector('.assistant-actions-row');
 
         if (!activityPrompt || !activityList || !chat || !chatPrompt || !booking || !bookingList) return;
 
@@ -540,9 +558,33 @@ import './state.js';
             if (saveActions) saveActions.style.display = 'none';
             if (chatInputRow) chatInputRow.style.display = 'grid';
         }
-    }
 
-    function populateAssistantActivities() {
+        const outstanding = getOutstandingBookings();
+        if (!assistantPendingSave && outstanding.length === 0) {
+            const today = getActiveDayActivities();
+            const agenda = today.map(a => `${a.time || 'TBD'} • ${a.title}`).join('<br>');
+            if (questionTitle) questionTitle.textContent = 'Route ready';
+            if (questionSub) questionSub.innerHTML = `All stops for Day ${activeDayIndex + 1} are booked and confirmed.<br>${agenda}`;
+            if (questionActions) {
+                questionActions.innerHTML = `
+                    <button class="assistant-chip" onclick="openChatModal()">Ask a question</button>
+                    <button class="assistant-chip" onclick="skipNextStop(this)">Skip next</button>
+                    <button class="assistant-chip" onclick="moveNextToTomorrow(this)">Delay next</button>
+                `;
+            }
+        } else if (assistantMode === 'confirm' && outstanding.length > 0) {
+            const names = outstanding.map(o => o.title).join(', ');
+            if (questionTitle) questionTitle.textContent = 'Bookings needed';
+            if (questionSub) questionSub.textContent = `Pending: ${names}`;
+            if (questionActions) {
+                questionActions.innerHTML = `
+                    <button class="assistant-chip" onclick="openChatModal()">Ask a question</button>
+                    <button class="assistant-chip" onclick="renderBookingList()">Refresh list</button>
+                `;
+            }
+        }
+    }
+function populateAssistantActivities() {
         const activityList = document.getElementById('assistantActivityList');
         if (!activityList) return;
         activityList.innerHTML = '';
@@ -554,7 +596,7 @@ import './state.js';
         activities.forEach((act) => {
             const btn = document.createElement('button');
             btn.className = 'assistant-activity-btn';
-            btn.textContent = `${act.title}${act.time ? ` • ${act.time}` : ''}`;
+            btn.textContent = `${act.title}${act.time ? ` â€¢ ${act.time}` : ''}`;
             btn.addEventListener('click', () => {
                 assistantSelectedActivity = act;
                 assistantMode = 'chat';
@@ -571,7 +613,7 @@ import './state.js';
         const bookingSection = document.getElementById('assistantBookingPrompt');
         if (!bookingList) return;
         bookingList.innerHTML = '';
-        const activities = getActiveDayActivities().filter(a => !!a.requiresBooking);
+        const activities = getActiveDayActivities().filter(a => !!a.requiresBooking && !isBooked(activeDayIndex + 1, a.id));
         if (!activities.length) {
             bookingList.innerHTML = '<div style="color:var(--secondary-text); font-size:0.88rem;">No activities require booking.</div>';
             if (bookingSection) bookingSection.style.display = 'none';
@@ -586,14 +628,6 @@ import './state.js';
             link.target = '_blank';
             link.rel = 'noopener noreferrer';
             link.textContent = act.title;
-            const booked = isBooked(activeDayIndex + 1, act.id);
-            if (booked) {
-                const badge = document.createElement('span');
-                badge.textContent = 'Booked';
-                badge.style.marginLeft = '6px';
-                badge.className = 'activity-timechip';
-                item.appendChild(badge);
-            }
             item.appendChild(link);
             bookingList.appendChild(item);
         });
@@ -813,7 +847,7 @@ import './state.js';
         renderItineraryUI(currentItinerary, tripDates || []);
         if (!preview) {
             const changes = [];
-            if (original.time !== updated.time) changes.push(`Time: ${original.time || 'TBD'} → ${updated.time}`);
+            if (original.time !== updated.time) changes.push(`Time: ${original.time || 'TBD'} â†’ ${updated.time}`);
             if (original.title !== updated.title) changes.push(`Title updated`);
             preview = changes.length ? changes.join(' | ') : 'Change applied.';
         }
@@ -1742,18 +1776,18 @@ import './state.js';
                 <strong>Arrived:</strong> ${activity.title}<br>
                 ${timingNote}<br>
                 <div style="margin-top:6px;">
-                    <div><em>${duration} • Planned at ${sched}</em></div>
+                    <div><em>${duration} â€¢ Planned at ${sched}</em></div>
                     ${detail ? `<div>${detail}</div>` : ''}
                     ${insta ? `<div>${insta}</div>` : ''}
                 </div>
                 ${nextLine}
                 <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
-                    <button class="btn-secondary" style="padding:6px 10px; font-size:0.8rem;" onclick="swapCurrentToTomorrow(${dayNumber}, ${activity.id})">Swap & move to tomorrow</button>
+                    <button class="assistant-chip" onclick="skipNextStop(this)">Skip next</button>
+                    <button class="assistant-chip" onclick="moveNextToTomorrow(this)">Delay next</button>
                 </div>
                 <div style="margin-top:6px; color: var(--secondary-text);">Ask me to adjust timing if you're early/late.</div>
             `;
             showAssistant(note);
-            renderAssistantState(buildAssistantContext());
         } else {
             showToast('Check-in recorded.', 'success');
         }
@@ -1782,27 +1816,38 @@ import './state.js';
         }
     }
 
-    function isBooked(dayNumber, activityId) {
-        return !!bookings[`${dayNumber}-${activityId}`];
-    }
-
-    function toggleBooking(dayNumber, activityId, evt) {
+        function isBooked(dayNumber, activityId) {\n        const key = ${dayNumber}-;\n        const entry = bookings[key];\n        const planKey = getPlanKey();\n        const day = currentItinerary && currentItinerary[dayNumber - 1];\n        const activity = day ? day.find(a => a.id === activityId) : null;\n        const matchesPlan = entry && entry.planKey === planKey;\n        return (!!entry && matchesPlan) || !!activity?._bookingDone;\n    }\n\n        function toggleBooking(dayNumber, activityId, evt) {
         if (evt) evt.stopPropagation();
         const key = `${dayNumber}-${activityId}`;
         const wasBooked = !!bookings[key];
+        const planKey = getPlanKey();
         if (wasBooked) {
             delete bookings[key];
         } else {
-            bookings[key] = { ts: Date.now() };
+            bookings[key] = { ts: Date.now(), planKey };
         }
         saveBookings(bookings);
+        const day = currentItinerary && currentItinerary[dayNumber - 1];
+        if (day) {
+            const act = day.find(a => a.id === activityId);
+            if (act) act._bookingDone = !wasBooked;
+        }
         const btn = document.querySelector(`[data-book-btn='${key}']`);
         if (btn) btn.textContent = wasBooked ? 'Mark booked' : 'Booked';
+        const badge = document.querySelector(`[data-book-badge='${key}']`);
+        if (badge) {
+            badge.textContent = wasBooked ? 'Requires booking' : 'Booked';
+            badge.style.background = wasBooked ? 'rgba(234,179,8,0.15)' : 'rgba(22,163,74,0.15)';
+            badge.style.color = wasBooked ? 'var(--accent-gold)' : 'var(--success)';
+            badge.style.borderColor = wasBooked ? 'rgba(234,179,8,0.5)' : 'rgba(22,163,74,0.5)';
+        }
         showToast(wasBooked ? 'Booking removed.' : 'Marked as booked.', 'success');
+        const remaining = getOutstandingBookings(dayNumber - 1);
+        assistantMode = remaining.length === 0 ? 'change' : 'confirm';
         renderBookingList();
+        renderAssistantInline();
     }
-
-    function fillEditForm(fullName, avatarColor) {
+function fillEditForm(fullName, avatarColor) {
         const first = document.getElementById('editFirstName');
         const last = document.getElementById('editLastName');
         const email = document.getElementById('editEmail');
@@ -2338,7 +2383,7 @@ import './state.js';
             }
             const distanceLabel = `${info.distanceKm.toFixed(1)} km`;
             const durationLabel = `${info.durationMin || 0} min`;
-            chip.textContent = `${distanceLabel} • ${durationLabel}`;
+            chip.textContent = `${distanceLabel} â€¢ ${durationLabel}`;
             chip.dataset.source = info.source;
             if (currentItinerary && currentItinerary[dayNumber - 1] && currentItinerary[dayNumber - 1][idx]) {
                 currentItinerary[dayNumber - 1][idx]._lastDistance = distanceLabel;
@@ -2602,8 +2647,8 @@ import './state.js';
             const datePart = dates[idx] ? dates[idx].toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }) : `Day ${idx + 1}`;
             summary += `${datePart}:\n`;
             day.slice(0, 3).forEach(a => {
-                const distance = a._lastDistance ? ` • ${a._lastDistance}` : '';
-                const duration = a._lastDuration ? ` • ${a._lastDuration}` : '';
+                const distance = a._lastDistance ? ` â€¢ ${a._lastDistance}` : '';
+                const duration = a._lastDuration ? ` â€¢ ${a._lastDuration}` : '';
                 summary += ` - ${a.title}${a.time ? ' at ' + a.time : ''}${distance}${duration}\n`;
             });
         });
@@ -2720,9 +2765,11 @@ import './state.js';
                     ? `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${activity.lat},${activity.lng}`
                     : mapsUrl;
                 const routeChip = hasCoords
-                    ? `<span class="route-chip" data-day="${dayNumber}" data-idx="${idx}" data-lat="${activity.lat}" data-lng="${activity.lng}" data-prev-lat="${origin.lat}" data-prev-lng="${origin.lng}" title="Distance & duration">Route…</span>`
+                    ? `<span class="route-chip" data-day="${dayNumber}" data-idx="${idx}" data-lat="${activity.lat}" data-lng="${activity.lng}" data-prev-lat="${origin.lat}" data-prev-lng="${origin.lng}" title="Distance & duration">Routeâ€¦</span>`
                     : '';
-                const bookingBadge = activity.requiresBooking ? `<span class="activity-badge" style="background:rgba(234,179,8,0.15); color:var(--accent-gold); border:1px solid rgba(234,179,8,0.5);">Requires booking</span>` : '';
+                const bookingBadge = activity.requiresBooking
+                    ? `<span class="activity-badge" data-book-badge="${bookingKey}" style="background:${booked ? 'rgba(22,163,74,0.15)' : 'rgba(234,179,8,0.15)'}; color:${booked ? 'var(--success)' : 'var(--accent-gold)'}; border:1px solid ${booked ? 'rgba(22,163,74,0.5)' : 'rgba(234,179,8,0.5)'};">${booked ? 'Booked' : 'Requires booking'}</span>`
+                    : '';
 
                 activityList += `
                     <div class="activity-item" onclick="toggleDetails(this)">
@@ -2939,7 +2986,7 @@ import './state.js';
             listEl.innerHTML = lines.map(line => {
                 const timeMatch = line.match(/(\d{1,2}:\d{2})/);
                 const time = timeMatch ? timeMatch[1] : '--:--';
-                const title = line.replace(/^\s*\d{1,2}:\d{2}\s*[-–—:]\s*/, '').replace(/^[\-\d\.\)\s]+/, '').trim() || line;
+                const title = line.replace(/^\s*\d{1,2}:\d{2}\s*[-â€“â€”:]\s*/, '').replace(/^[\-\d\.\)\s]+/, '').trim() || line;
                 return `<div class="hero-card-line"><span>${time}</span><strong>${title}</strong></div>`;
             }).join('');
             metaEl.textContent = `Profile: Tempo ${userPreferences.tempo} | Price ${userPreferences.price} | Transport ${userPreferences.transportation}`;
@@ -2964,7 +3011,7 @@ import './state.js';
             return travelHints.some(k => t.includes(k));
         };
         if (!isTravelRelated(userText)) {
-            appendChatBubble('I’m here to help with your Chicago trip—ask about your itinerary, days, times, places, bookings, or directions.', false);
+            appendChatBubble('Iâ€™m here to help with your Chicago tripâ€”ask about your itinerary, days, times, places, bookings, or directions.', false);
             return;
         }
         try {
@@ -3439,5 +3486,13 @@ export {
     renderTripsOnProfile,
     undoLastChange
 };
+
+
+
+
+
+
+
+
 
 
