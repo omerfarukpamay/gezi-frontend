@@ -568,12 +568,7 @@
             drawer.style.transition = '';
             drawer.style.transform = '';
         }
-        if (delta > 60) {
-            dockAssistant();
-        } else {
-            expandAssistantFull();
-        }
-        renderAssistantState(buildAssistantContext());
+        // no-op for sheet version
     }
 
     function handleAssistantTouchStart(e) {
@@ -914,6 +909,16 @@
         sections.forEach(sec => sec.classList.remove('active'));
         const target = document.getElementById(id);
         if (target) target.classList.add('active');
+
+        const headerActions = document.querySelector('.header-actions');
+        const mapBtn = document.getElementById('viewDayMapBtn');
+        if (id === 'results') {
+            if (headerActions) headerActions.style.display = 'flex';
+            if (mapBtn) mapBtn.style.display = 'inline-flex';
+        } else {
+            if (headerActions) headerActions.style.display = 'none';
+            if (mapBtn) mapBtn.style.display = 'none';
+        }
 
         if (id === 'profile' || id === 'auth' || id === 'settings' || id === 'pastTrips') {
             setActiveTab('profile');
@@ -2144,15 +2149,6 @@
         }
 
         return `
-            <div class="day-header">
-                <div>
-                    <div class="day-title">DAY ${dayNumber}</div>
-                    <div class="day-meta">${dateStr}</div>
-                </div>
-                <div class="day-header-controls">
-                    <div class="weather-info">${weather.icon} ${weather.temp}</div>
-                </div>
-            </div>
             <div class="day-content">
                 ${activityList}
             </div>
@@ -2544,6 +2540,14 @@
                 if (y !== undefined) startSheetDrag(y);
             });
             assistantBar.addEventListener('click', () => expandAssistantSheet());
+        }
+        const assistantHeader = document.querySelector('.assistant-drawer-header');
+        if (assistantHeader) {
+            assistantHeader.addEventListener('mousedown', (e) => startSheetDrag(e.clientY));
+            assistantHeader.addEventListener('touchstart', (e) => {
+                const y = e.touches?.[0]?.clientY;
+                if (y !== undefined) startSheetDrag(y);
+            });
         }
     });
 
