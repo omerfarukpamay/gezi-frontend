@@ -131,7 +131,7 @@ export async function updateRouteChips({ dayNumber, getTransportMode, itinerary,
         const base = info.durationMin || 0;
         const adjusted = Math.max(1, Math.round(base * traffic.multiplier));
         const durationLabel = `${adjusted} min`;
-        chip.textContent = `${distanceLabel} • ${durationLabel}`;
+        chip.textContent = `${distanceLabel} | ${durationLabel}`;
         chip.title = traffic.hint || 'Estimated travel time (no real-time traffic).';
         chip.dataset.source = info.source;
 

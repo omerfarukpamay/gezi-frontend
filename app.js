@@ -251,7 +251,7 @@ import {
 
 /* --------- DATA: 3 TEST EXPERIENCES ---------- */
     const experiences = [
-        { id: 1, title: "Luxury Helicopter Tour", category: "Adventure", price: 3, img: "https://images.unsplash.com/photo-1540962351504-03099e0a754b?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "luxury", details: "A 30-minute private helicopter ride offering unmatched views of the Magnificent Mile and Lake Michigan.", insta: "Best shot is the tilt-shift view looking straight down at The Loop. Use a wide-angle lens!", time: "10:00", duration: "45 min", lat: 41.8842, lng: -87.6258, requiresBooking: true },
+        { id: 1, title: "Luxury Helicopter Tour", category: "Adventure", price: 3, img: "https://images.unsplash.com/photo-1540962351504-03099e0a754b?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "luxury", details: "A 30-minute private helicopter ride offering unmatched views of the Magnificent Mile and Lake Michigan.", insta: "Best shot is the tilt-shift view looking straight down at The Loop. Use a wide-angle lens!", time: "10:00", duration: "45 min", lat: 41.9881274, lng: -87.65572, address: "5820 N Sheridan Rd, Chicago, IL 60660", requiresBooking: true },
         { id: 2, title: "Deep Dish Pizza (Lou Malnati's)", category: "Food", price: 2, img: "https://images.unsplash.com/photo-1619860167683-176375037549?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "food_mid", details: "Experience authentic Chicago-style deep-dish pizza. Recommended: Buttercrust with sausage.", insta: "Get a close-up of the cheese pull before you slice the pie! Make sure the tomato sauce looks vibrant.", time: "12:30", duration: "1 hr 15 min", lat: 41.8938, lng: -87.6276, requiresBooking: false },
         { id: 3, title: "Alinea (3-Star Michelin)", category: "Fine Dining", price: 3, img: "https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "luxury_food", details: "World-renowned culinary experience. This is an evening activity requiring formal attire and advance booking.", insta: "Capture the artistic presentation of the floating dessert course. Use soft, directional lighting.", time: "19:00", duration: "3 hr", lat: 41.9161, lng: -87.6483, requiresBooking: true }
     ];
@@ -376,6 +376,214 @@ import {
         }
         updateLocationPlanPromptVisibility();
     }
+
+    /* ---------- ARRIVAL DETECTION (GPS + DWELL) ---------- */
+    const ARRIVAL_STORAGE_KEY = 'assistant_arrival_state_v1';
+    const ARRIVAL_RADIUS_METERS = 100;
+    const ARRIVAL_DWELL_MS = 1000 * 60 * 2;
+    const ARRIVAL_SNOOZE_MS = 1000 * 60 * 10;
+    const ARRIVAL_PROMPT_CLEAR_METERS = 250;
+
+    function loadArrivalState() {
+        try { return JSON.parse(localStorage.getItem(ARRIVAL_STORAGE_KEY)) || {}; } catch (e) { return {}; }
+    }
+    function saveArrivalState(state) {
+        try { localStorage.setItem(ARRIVAL_STORAGE_KEY, JSON.stringify(state || {})); } catch (e) {}
+    }
+    let arrivalState = loadArrivalState();
+
+    let geoWatchId = null;
+    let arrivalCandidate = null; // { stopKey, enteredAt }
+    let arrivalPromptShownFor = null; // stopKey
+
+    function getStopKey(dayNumber, activityId) {
+        return `${dayNumber}-${activityId}`;
+    }
+
+    function getArrivalBucket(planKey = getPlanKey()) {
+        if (!planKey) planKey = 'plan';
+        if (!arrivalState[planKey]) {
+            arrivalState[planKey] = { confirmed: {}, snoozedUntil: {} };
+            saveArrivalState(arrivalState);
+        }
+        return arrivalState[planKey];
+    }
+
+    function isStopArrivalConfirmed(dayNumber, activityId, planKey = getPlanKey()) {
+        const bucket = getArrivalBucket(planKey);
+        return !!bucket.confirmed?.[getStopKey(dayNumber, activityId)];
+    }
+
+    function isArrivalPromptSnoozed(dayNumber, activityId, planKey = getPlanKey()) {
+        const bucket = getArrivalBucket(planKey);
+        const until = bucket.snoozedUntil?.[getStopKey(dayNumber, activityId)];
+        return typeof until === 'number' && Date.now() < until;
+    }
+
+    function snoozeArrivalPrompt(dayNumber, activityId, ms = ARRIVAL_SNOOZE_MS, planKey = getPlanKey()) {
+        const bucket = getArrivalBucket(planKey);
+        bucket.snoozedUntil[getStopKey(dayNumber, activityId)] = Date.now() + ms;
+        saveArrivalState(arrivalState);
+    }
+
+    function confirmStopArrival(dayNumber, activityId, meta = {}, planKey = getPlanKey()) {
+        const bucket = getArrivalBucket(planKey);
+        bucket.confirmed[getStopKey(dayNumber, activityId)] = { ts: Date.now(), ...meta };
+        delete bucket.snoozedUntil[getStopKey(dayNumber, activityId)];
+        saveArrivalState(arrivalState);
+    }
+
+    function isResultsSectionActive() {
+        const el = document.getElementById('results');
+        return !!el && el.classList.contains('active');
+    }
+
+    function shouldTrackArrivals() {
+        if (!isResultsSectionActive()) return false;
+        if (!settingsStore?.locationEnabled) return false;
+        if (!navigator.geolocation) return false;
+        return true;
+    }
+
+    function haversineMeters(lat1, lng1, lat2, lng2) {
+        const R = 6371000;
+        const toRad = (d) => (d * Math.PI) / 180;
+        const dLat = toRad(lat2 - lat1);
+        const dLng = toRad(lng2 - lng1);
+        const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+
+    function getNextArrivableStop() {
+        if (!currentItinerary || !currentItinerary.length) return null;
+        const dayNumber = activeDayIndex + 1;
+        const day = getActiveDayActivities();
+        if (!day || !day.length) return null;
+        const next = day.find(a => a && typeof a.lat === 'number' && typeof a.lng === 'number' && !isStopArrivalConfirmed(dayNumber, a.id));
+        if (!next) return null;
+        return { dayNumber, activity: next };
+    }
+
+    function clearArrivalPromptUi() {
+        const host = document.getElementById('arrivalPromptHost');
+        if (!host) return;
+        host.style.display = 'none';
+        host.innerHTML = '';
+        arrivalPromptShownFor = null;
+    }
+
+    function renderArrivalPromptUi(dayNumber, activity) {
+        const host = document.getElementById('arrivalPromptHost');
+        if (!host || !activity) return;
+        const title = activity.title || 'this stop';
+        const stopKey = getStopKey(dayNumber, activity.id);
+        arrivalPromptShownFor = stopKey;
+        host.style.display = 'flex';
+        host.innerHTML = `
+            <div>
+                <strong>Looks like you're at ${title}.</strong>
+                <div class="meta">Start your on-site tour with Wise? (Detected within ~${ARRIVAL_RADIUS_METERS}m for 2+ minutes.)</div>
+            </div>
+            <div class="actions">
+                <button class="assistant-chip" onclick="respondToArrivalPrompt(true, ${dayNumber}, ${activity.id})">Yes, start</button>
+                <button class="assistant-chip" style="opacity:0.9;" onclick="respondToArrivalPrompt(false, ${dayNumber}, ${activity.id})">Not yet</button>
+            </div>
+        `;
+    }
+
+    function evaluateArrivalFromLocation(locationSnap) {
+        if (!shouldTrackArrivals()) {
+            arrivalCandidate = null;
+            clearArrivalPromptUi();
+            return;
+        }
+        if (!isTourGuideActive() || !isPlanFullyConfirmed()) {
+            arrivalCandidate = null;
+            clearArrivalPromptUi();
+            return;
+        }
+        const target = getNextArrivableStop();
+        if (!target) {
+            arrivalCandidate = null;
+            clearArrivalPromptUi();
+            return;
+        }
+
+        const { dayNumber, activity } = target;
+        if (!activity || typeof activity.lat !== 'number' || typeof activity.lng !== 'number') return;
+        const distanceM = haversineMeters(locationSnap.lat, locationSnap.lng, activity.lat, activity.lng);
+
+        if (arrivalPromptShownFor === getStopKey(dayNumber, activity.id) && distanceM > ARRIVAL_PROMPT_CLEAR_METERS) {
+            arrivalCandidate = null;
+            clearArrivalPromptUi();
+            return;
+        }
+
+        if (distanceM <= ARRIVAL_RADIUS_METERS) {
+            if (isArrivalPromptSnoozed(dayNumber, activity.id)) return;
+            if (!arrivalCandidate || arrivalCandidate.stopKey !== getStopKey(dayNumber, activity.id)) {
+                arrivalCandidate = { stopKey: getStopKey(dayNumber, activity.id), enteredAt: Date.now() };
+                return;
+            }
+            if (Date.now() - arrivalCandidate.enteredAt >= ARRIVAL_DWELL_MS) {
+                if (arrivalPromptShownFor !== getStopKey(dayNumber, activity.id) && !isStopArrivalConfirmed(dayNumber, activity.id)) {
+                    renderArrivalPromptUi(dayNumber, activity);
+                }
+            }
+            return;
+        }
+
+        if (arrivalCandidate && arrivalCandidate.stopKey === getStopKey(dayNumber, activity.id)) {
+            arrivalCandidate = null;
+        }
+    }
+
+    function updateArrivalTracking() {
+        if (!navigator.geolocation) return;
+        if (!shouldTrackArrivals()) {
+            if (geoWatchId !== null) {
+                try { navigator.geolocation.clearWatch(geoWatchId); } catch (e) {}
+                geoWatchId = null;
+            }
+            arrivalCandidate = null;
+            clearArrivalPromptUi();
+            return;
+        }
+
+        if (geoWatchId !== null) return;
+        let lastRouteUpdate = 0;
+        geoWatchId = navigator.geolocation.watchPosition(
+            (pos) => {
+                const lat = pos?.coords?.latitude;
+                const lng = pos?.coords?.longitude;
+                const accuracy = pos?.coords?.accuracy;
+                if (typeof lat !== 'number' || typeof lng !== 'number') return;
+                const snap = { lat, lng, accuracy, ts: Date.now() };
+                saveUserLocation(snap);
+                if (currentItinerary && currentItinerary.length) {
+                    const now = Date.now();
+                    if (now - lastRouteUpdate > 5000) {
+                        lastRouteUpdate = now;
+                        updateRouteChips(activeDayIndex + 1);
+                    }
+                }
+                evaluateArrivalFromLocation(snap);
+            },
+            (err) => {
+                if (err?.code === 1) {
+                    showToast('Location permission denied. Enable it to use arrival detection.', 'info');
+                }
+                try { navigator.geolocation.clearWatch(geoWatchId); } catch (e) {}
+                geoWatchId = null;
+            },
+            { enableHighAccuracy: false, maximumAge: 5000, timeout: 15000 }
+        );
+    }
+
     let lastAiContext = null;
     let assistantOpen = false;
     let assistantFullscreen = false;
@@ -646,6 +854,7 @@ import {
         const shouldShow = isTourGuideActive();
         if (bar) bar.style.display = shouldShow ? 'flex' : 'none';
         if (chatBtn) chatBtn.style.display = shouldShow ? 'inline-flex' : 'none';
+        updateArrivalTracking();
     }
 
     function showAssistant(messageHtml = 'Assistant is standing by.') {
@@ -686,11 +895,11 @@ import {
         let routeHtml = '';
         if (current || next || (later && later.length)) {
             routeHtml += '<div class="assistant-route">';
-            if (current) routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">Now</span><div><strong>${current.title}</strong><br><span>${current.time || 'TBD'} • ${current.duration || ''}</span></div></div>`;
-            if (next) routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">Next</span><div><strong>${next.title}</strong><br><span>${next.time || 'TBD'} • ${next.duration || ''}</span></div></div>`;
+            if (current) routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">Now</span><div><strong>${current.title}</strong><br><span>${current.time || 'TBD'} | ${current.duration || ''}</span></div></div>`;
+            if (next) routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">Next</span><div><strong>${next.title}</strong><br><span>${next.time || 'TBD'} | ${next.duration || ''}</span></div></div>`;
             if (later && later.length) {
                 later.slice(0,2).forEach((item, idx) => {
-                    routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">L${idx+1}</span><div><strong>${item.title}</strong><br><span>${item.time || 'TBD'} • ${item.duration || ''}</span></div></div>`;
+                    routeHtml += `<div class="assistant-stop"><span class="assistant-stop badge">L${idx+1}</span><div><strong>${item.title}</strong><br><span>${item.time || 'TBD'} | ${item.duration || ''}</span></div></div>`;
                 });
             }
             routeHtml += '</div>';
@@ -876,7 +1085,7 @@ import {
             if (input) input.focus();
             const messages = document.getElementById('chatMessages');
             if (messages && messages.children.length === 0) {
-                appendChatBubble('How can I help you with your Chicago trip today?', false);
+                appendChatBubble('Hi! I\'m Wise. Ask me about the place you\'re visiting, what to bring, timing tips, or nearby options.', false);
             }
         } else if (panel) {
             panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1041,7 +1250,11 @@ function writeBackDayActivities(activities) {
             case ASSISTANT_STATES.REFINEMENT_PICK_ACTIVITY: {
                 if (questionTitle) questionTitle.textContent = 'Pick an activity to change.';
                 if (questionSub) questionSub.textContent = '';
-                if (questionActions) questionActions.innerHTML = '';
+                if (questionActions) {
+                    questionActions.innerHTML = `
+                        <button class="assistant-chip" onclick="setAssistantMode('${ASSISTANT_STATES.REFINEMENT_INITIAL}')">Back</button>
+                    `;
+                }
                 activityPrompt.style.display = 'block';
                 populateAssistantActivities();
                 break;
@@ -1136,8 +1349,8 @@ function writeBackDayActivities(activities) {
                     : '';
                 const tourGuideOn = isTourGuideActive();
                 const intro = tourGuideOn
-                    ? `AI Tour Guide is ready. Long-press "Arrived" or "Completed" for 2s to send a signal.`
-                    : `Confirm booking status (or choose "I'll book later") to start Tour Guide check-ins.`;
+                    ? `AI Tour Guide is ready. You'll get prompts when you're near a stop.`
+                    : `Confirm booking status (or choose "I'll book later") to start Wise.`;
                 if (questionSub) questionSub.innerHTML = `${intro}<br>${weather.icon || ''} ${weather.temp || ''} ${weather.desc || ''}<br>${agenda}${reminder}`;
                 if (questionActions) {
                     const bookingBtn = outstanding.length && (deferred || isPlanLocked())
@@ -1145,7 +1358,7 @@ function writeBackDayActivities(activities) {
                         : '';
                     questionActions.innerHTML = `
                         ${bookingBtn}
-                        <button class="assistant-chip" onclick="openChatModal()">Help</button>
+                        <button class="assistant-chip" onclick="openAssistantChat()">Open Wise</button>
                         <button class="assistant-chip" onclick="skipNextStop(this)">Skip next stop</button>
                         <button class="assistant-chip" onclick="moveNextToTomorrow(this)">Delay next stop</button>
                     `;
@@ -1708,6 +1921,38 @@ function populateAssistantActivities() {
         modal.classList.toggle('expanded');
     }
 
+    function openWiseForActivity(dayNumber, activityId) {
+        const day = currentItinerary && currentItinerary[dayNumber - 1];
+        const activity = day ? day.find(a => a.id === activityId) : null;
+        const placeName = activity?.title || 'your stop';
+
+        openChatModal();
+        const messages = document.getElementById('chatMessages');
+        const input = document.getElementById('chatInput');
+
+        const intro1 = `Hi! I'm Wise, your on-site tour guide for ${placeName}.`;
+        const intro2 = `Want a 60-second intro, or do you have a specific question?`;
+
+        const lastText = (() => {
+            try {
+                const last = messages?.lastElementChild?.querySelector('.bubble-text')?.textContent || '';
+                return String(last).trim();
+            } catch (e) {
+                return '';
+            }
+        })();
+
+        if (messages && messages.children.length === 0) {
+            appendChatBubble(intro1, false);
+            appendChatBubble(intro2, false);
+        } else if (lastText !== intro2) {
+            appendChatBubble(intro1, false);
+            appendChatBubble(intro2, false);
+        }
+
+        if (input) input.focus();
+    }
+
     function sendChatMessage() {
         const primaryInput = document.getElementById('chatInput');
         const sheetInput = document.getElementById('assistantSheetInput');
@@ -1800,8 +2045,8 @@ function populateAssistantActivities() {
                 const dist = formatDistanceMiles(Math.max(0.1, p.distanceKm), 1);
                 const status = p.openStatus === 'open' ? 'Open now' : (p.openStatus === 'closed' ? 'Closed' : 'Hours unknown');
                 const maps = buildGoogleMapsSearchUrl(p.name, p.lat, p.lng);
-                const addr = p.address ? ` • ${p.address}` : '';
-                return `<div style="margin:6px 0;"><strong><a href="${maps}" target="_blank" rel="noopener noreferrer" style="color:var(--accent-cyan); text-decoration:none;">${p.name}</a></strong><br><span style="color:var(--secondary-text); font-size:0.85rem;">${dist} • ${status}${addr}</span></div>`;
+                const addr = p.address ? ` | ${p.address}` : '';
+                return `<div style="margin:6px 0;"><strong><a href="${maps}" target="_blank" rel="noopener noreferrer" style="color:var(--accent-cyan); text-decoration:none;">${p.name}</a></strong><br><span style="color:var(--secondary-text); font-size:0.85rem;">${dist} | ${status}${addr}</span></div>`;
             }).join('');
             showAssistant(`<strong>Nearby ${title}:</strong>${lines}`);
             renderAssistantState(buildAssistantContext());
@@ -2089,6 +2334,7 @@ function populateAssistantActivities() {
 
         updateHeaderActionsVisibility();
         updateLocationPlanPromptVisibility();
+        updateArrivalTracking();
 
         if (id === 'profile' || id === 'auth' || id === 'settings' || id === 'pastTrips') {
             setActiveTab('profile');
@@ -2150,12 +2396,21 @@ function populateAssistantActivities() {
         try { localStorage.removeItem('planner_change_history_v1'); } catch (e) {}
         try { localStorage.removeItem(PLAN_INSIGHTS_DISMISSED_KEY); } catch (e) {}
         try { localStorage.removeItem(PLAN_SUGGESTIONS_HINT_SEEN_KEY); } catch (e) {}
+        try { localStorage.removeItem(ARRIVAL_STORAGE_KEY); } catch (e) {}
 
         planInsightsDismissed = {};
         planSuggestionsHintSeen = {};
         if (planSuggestionsHintTimeout) {
             clearTimeout(planSuggestionsHintTimeout);
             planSuggestionsHintTimeout = null;
+        }
+
+        arrivalState = {};
+        arrivalCandidate = null;
+        clearArrivalPromptUi();
+        if (geoWatchId !== null) {
+            try { navigator.geolocation.clearWatch(geoWatchId); } catch (e) {}
+            geoWatchId = null;
         }
 
         checkins = {};
@@ -2627,6 +2882,51 @@ function populateAssistantActivities() {
 
     const HOLD_MS = 2000;
 
+    function recordArrivalSignal(dayNumber, activity, source = 'gps') {
+        if (!activity) return;
+        const now = new Date();
+        const nowMin = now.getHours() * 60 + now.getMinutes();
+        const scheduledStart = timeToMinutes(activity.time);
+        const plannedDuration = durationToMinutes(activity.duration);
+        let timingNote = 'On schedule.';
+        if (scheduledStart !== null) {
+            const expectedEnd = scheduledStart + plannedDuration;
+            const diff = Math.round(nowMin - expectedEnd);
+            if (diff > 10) timingNote = `Running ${diff} min late.`;
+            else if (diff < -10) timingNote = `You are ${Math.abs(diff)} min early.`;
+        }
+
+        const key = `${dayNumber}-${activity.id}`;
+        checkins[key] = { ts: now.getTime(), title: activity.title, timingNote, source };
+        saveCheckins(checkins);
+        lastAiContext = buildChatContext(dayNumber, activity, 'arrived', timingNote, now.toISOString());
+    }
+
+    function respondToArrivalPrompt(didArrive, dayNumber, activityId) {
+        const day = currentItinerary && currentItinerary[dayNumber - 1];
+        const activity = day ? day.find(a => a.id === activityId) : null;
+        clearArrivalPromptUi();
+        arrivalCandidate = null;
+
+        if (!didArrive) {
+            if (activity) {
+                snoozeArrivalPrompt(dayNumber, activityId);
+            }
+            showToast('No problem. You can open Wise anytime by tapping the chat icon.', 'info');
+            return;
+        }
+
+        if (!activity) {
+            showToast('Stop not found in the plan.', 'error');
+            return;
+        }
+
+        confirmStopArrival(dayNumber, activityId, { title: activity.title });
+        recordArrivalSignal(dayNumber, activity, 'gps');
+        openWiseForActivity(dayNumber, activityId);
+        updateArrivalTracking();
+    }
+
     function startHold(action, dayNumber, activityId, btn, evt) {
         if (evt) evt.stopPropagation();
         if (!isTourGuideActive()) {
@@ -2649,7 +2949,7 @@ function populateAssistantActivities() {
         if (!btn || !btn.dataset.holdTimer) return;
         clearTimeout(btn.dataset.holdTimer);
         btn.dataset.holdTimer = null;
-        showToast('Hold 2s to send Arrived/Completed.', 'info');
+        showToast('Action canceled.', 'info');
     }
 
     function handleCheckin(dayNumber, activityId, btn) {
@@ -2693,7 +2993,7 @@ function populateAssistantActivities() {
                 <strong>Arrived:</strong> ${activity.title}<br>
                 ${timingNote}<br>
                 <div style="margin-top:6px;">
-                    <div><em>${duration} • Planned at ${sched}</em></div>
+                    <div><em>${duration} | Planned at ${sched}</em></div>
                     ${detail ? `<div>${detail}</div>` : ''}
                     ${insta ? `<div>${insta}</div>` : ''}
                 </div>
@@ -3184,6 +3484,10 @@ function populateAssistantActivities() {
             clearUserLocation();
             showToast('Location access disabled.', 'info');
             updateLocationPlanPromptVisibility();
+            updateArrivalTracking();
+            if (currentItinerary && currentItinerary.length) {
+                renderItineraryUI(currentItinerary, tripDates || []);
+            }
             return;
         }
 
@@ -3195,6 +3499,10 @@ function populateAssistantActivities() {
             saveSettingsStore(settingsStore);
             showToast('Location enabled.', 'success');
             updateLocationPlanPromptVisibility();
+            updateArrivalTracking();
+            if (currentItinerary && currentItinerary.length) {
+                renderItineraryUI(currentItinerary, tripDates || []);
+            }
         } catch (err) {
             settingsStore.locationEnabled = false;
             saveSettingsStore(settingsStore);
@@ -3211,6 +3519,7 @@ function populateAssistantActivities() {
                     : (err?.message || 'Could not enable location.');
             showToast(msg, 'error');
             updateLocationPlanPromptVisibility();
+            updateArrivalTracking();
         }
     }
 
@@ -3315,7 +3624,7 @@ function populateAssistantActivities() {
     }
 
     function updateRouteChips(dayNumber) {
-        const loc = settingsStore?.locationEnabled ? getUserLocationSnapshot() : null;
+        const loc = settingsStore?.locationEnabled ? getUserLocationSnapshot(1000 * 60 * 2) : null;
         const originOverride = loc ? { lat: loc.lat, lng: loc.lng } : null;
         return updateRouteChipsService({ dayNumber, getTransportMode, itinerary: currentItinerary, originOverride });
     }
@@ -3590,6 +3899,10 @@ function populateAssistantActivities() {
             updateRouteChips(idx + 1);
             renderPlanInsights();
             setTimeout(() => renderPlanInsights(), 700);
+            updateLocationPlanPromptVisibility();
+            updateArrivalTracking();
+            const snap = settingsStore?.locationEnabled ? getUserLocationSnapshot(1000 * 60 * 60 * 24) : null;
+            if (snap) evaluateArrivalFromLocation(snap);
         };
         setActiveDayExternal = setActiveDay;
 
@@ -3607,7 +3920,7 @@ function populateAssistantActivities() {
         setActiveDay(0);
 
         if (isTourGuideActive() && itinerary.length > 0) {
-            showAssistant(`<strong>Day plan ready.</strong> Long-press "Arrived" or "Completed" for 2s at each stop; I'll keep you in sync, suggest nearby picks, and answer questions.`);
+            showAssistant(`<strong>Day plan ready.</strong> I'll prompt you when you're near a stop, then you can open Wise for on-site guidance.`);
         }
     }
 
@@ -3635,8 +3948,8 @@ function populateAssistantActivities() {
             const datePart = dates[idx] ? dates[idx].toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }) : `Day ${idx + 1}`;
             summary += `${datePart}:\n`;
             day.slice(0, 3).forEach(a => {
-                const distance = a._lastDistance ? ` • ${a._lastDistance}` : '';
-                const duration = a._lastDuration ? ` • ${a._lastDuration}` : '';
+                const distance = a._lastDistance ? ` | ${a._lastDistance}` : '';
+                const duration = a._lastDuration ? ` | ${a._lastDuration}` : '';
                 summary += ` - ${a.title}${a.time ? ' at ' + a.time : ''}${distance}${duration}\n`;
             });
         });
@@ -3749,12 +4062,13 @@ function populateAssistantActivities() {
         } else {
             if (isTourGuideActive()) {
                 activityList += `<div style="padding: 8px 0; color: var(--success); font-style: italic; font-size:0.82rem;">
-                    <i class="fa-solid fa-robot"></i> AI Tour Guide is ready. Long-press "Arrived" or "Completed" for 2s to send a signal.
+                    <i class="fa-solid fa-robot"></i> AI Tour Guide is ready. I'll prompt you when you're near a stop.
                 </div>`;
             }
             dayPlan.forEach((activity, idx) => {
                 const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activity.title + ', Chicago')}`;
                 const hasCoords = activity.lat && activity.lng;
+                const canShowRouting = !!settingsStore?.locationEnabled;
                 const prev = idx > 0 ? dayPlan[idx - 1] : null;
                 const origin = prev && prev.lat && prev.lng ? prev : LOOP_COORDS;
                 const bookingKey = `${dayNumber}-${activity.id}`;
@@ -3762,8 +4076,8 @@ function populateAssistantActivities() {
                 const directionsUrl = hasCoords
                     ? `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${activity.lat},${activity.lng}`
                     : mapsUrl;
-                const routeChip = hasCoords
-                    ? `<span class="route-chip" data-day="${dayNumber}" data-idx="${idx}" data-lat="${activity.lat}" data-lng="${activity.lng}" data-prev-lat="${origin.lat}" data-prev-lng="${origin.lng}" title="Distance & duration">Route...</span>`
+                const routeChip = (hasCoords && canShowRouting)
+                    ? `<span class="route-chip" data-day="${dayNumber}" data-idx="${idx}" data-lat="${activity.lat}" data-lng="${activity.lng}" data-prev-lat="${origin.lat}" data-prev-lng="${origin.lng}" title="Distance & duration">Locating...</span>`
                     : '';
                 const bookingBadge = activity.requiresBooking
                     ? `<span class="activity-badge${booked ? '' : ' pulsing-glow'}" data-book-badge="${bookingKey}" style="background:${booked ? 'rgba(22,163,74,0.15)' : 'rgba(234,179,8,0.15)'}; color:${booked ? 'var(--success)' : 'var(--accent-gold)'}; border:1px solid ${booked ? 'rgba(22,163,74,0.5)' : 'rgba(234,179,8,0.5)'};">${booked ? 'Booked' : 'Booking needed'}</span>`
@@ -3772,7 +4086,7 @@ function populateAssistantActivities() {
                     ? `<span class="activity-badge" style="background:rgba(59,130,246,0.15); color:var(--accent-gold); border:1px solid rgba(59,130,246,0.5);">Updated</span>`
                     : '';
                 const guideSnippet = isTourGuideActive()
-                    ? `${weather.icon || ''} ${weather.temp || ''} ${weather.desc || ''} • Next: ${activity.time || 'TBD'} • Est. ${activity.duration || 'visit soon'}`
+                    ? `${weather.icon || ''} ${weather.temp || ''} ${weather.desc || ''} | Next: ${activity.time || 'TBD'} | Est. ${activity.duration || 'visit soon'}`
                     : '';
 
                 activityList += `
@@ -3783,32 +4097,11 @@ function populateAssistantActivities() {
                                 <div class="activity-title">${activity.title} ${bookingBadge} ${updatedBadge}</div>
                                 <div class="activity-duration">Est. Visit: ${activity.duration || '1 hr'}</div>
                                 <div class="activity-meta-row" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:6px;">
-                                    <span class="activity-timechip">${activity.time || 'TBD'}</span>
                                     <span class="activity-timechip">${activity.duration || '1 hr'}</span>
                                     ${routeChip}
                                 </div>
                             </div>
-                            ${isTourGuideActive() ? `
-                                <div class="activity-time-group">
-                                    <button class="checkin-btn" title="Arrived (long-press 2s)" 
-                                        onmousedown="startHold('arrived', ${dayNumber}, ${activity.id}, this, event)" 
-                                        onmouseup="cancelHold(this)" onmouseleave="cancelHold(this)"
-                                        ontouchstart="startHold('arrived', ${dayNumber}, ${activity.id}, this, event)" 
-                                        ontouchend="cancelHold(this)">
-                                        <i class="fa-solid fa-flag-checkered"></i>
-                                    </button>
-                                    <div class="activity-time">${activity.time || 'TBD'}</div>
-                                    <button class="complete-btn" title="Completed (long-press 2s)" 
-                                        onmousedown="startHold('completed', ${dayNumber}, ${activity.id}, this, event)" 
-                                        onmouseup="cancelHold(this)" onmouseleave="cancelHold(this)"
-                                        ontouchstart="startHold('completed', ${dayNumber}, ${activity.id}, this, event)" 
-                                        ontouchend="cancelHold(this)">
-                                        <i class="fa-regular fa-circle-check"></i>
-                                    </button>
-                                </div>
-                            ` : `
-                                <div class="activity-time">${activity.time || 'TBD'}</div>
-                            `}
+                            <div class="activity-time">${activity.time || 'TBD'}</div>
                         </div>
 
                         <div class="activity-details">
@@ -4474,6 +4767,8 @@ export {
     toggleLocationFromSettings,
     enableLocationFromPlanPrompt,
     dismissLocationPlanPrompt,
+    respondToArrivalPrompt,
+    openWiseForActivity,
     renderPlanInsights,
     dismissPlanInsight,
     openAssistantForSuggestion,

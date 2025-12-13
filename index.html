@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
     <link rel="icon" href="data:image/png;base64,iVBORw0KGgo=">
 
-    <link rel="stylesheet" href="styles.css?v=4">
+    <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
 
@@ -33,7 +33,7 @@
         <div class="logo" onclick="openHome()">Chicago<span>AI</span> Planner</div>
     </div>
     <div class="header-right">
-        <button class="header-chat-btn" id="headerChatBtn" onclick="openChatModal()" aria-label="Open chat" type="button" style="display:none;">
+        <button class="header-chat-btn" id="headerChatBtn" onclick="openAssistantChat()" aria-label="Open chat" type="button" style="display:none;">
             <i class="fa-solid fa-message"></i>
         </button>
         <div class="profile-menu" id="profileMenu">
@@ -497,6 +497,7 @@
 
             <div id="planBannerHost" class="plan-banner" style="display:none;"></div>
             <div id="planSuggestions" class="plan-suggestions" style="display:none;"></div>
+            <div id="arrivalPromptHost" class="arrival-banner" style="display:none;"></div>
 
             <div class="results-scroll-content" id="itineraryContent"></div>
 
@@ -550,7 +551,7 @@
 <!-- ASSISTANT DRAWER & CHAT -->
 <div class="chat-modal" id="chatModal">
     <div class="chat-modal-header">
-        <strong>AI Assistant</strong>
+        <strong>Wise</strong>
         <div style="display:flex; gap:6px;">
             <button class="assistant-close" onclick="toggleChatSize()" title="Toggle size"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
             <button class="assistant-close" onclick="closeChatModal()">Close</button>
@@ -558,7 +559,7 @@
     </div>
     <div class="chat-modal-body" id="chatMessages"></div>
     <div class="chat-modal-footer">
-        <input class="chat-input" id="chatInput" placeholder="Ask for tips or tweaks..." onkeydown="handleChatKeydown(event)" />
+        <input class="chat-input" id="chatInput" placeholder="Ask about the place you're visiting..." onkeydown="handleChatKeydown(event)" />
         <button class="chat-action" title="Record voice (send to AI later)"><i class="fa-solid fa-microphone"></i></button>
         <button class="chat-action" title="Attach photo"><i class="fa-solid fa-camera"></i></button>
         <button class="chat-send" onclick="sendChatMessage()">Send</button>
@@ -586,9 +587,9 @@
 
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<script src="api.js?v=17"></script>
-<script src="storage.js?v=17"></script>
-<script src="ui.js?v=17"></script>
-<script type="module" src="main.js?v=17"></script>
+  <script src="api.js?v=22"></script>
+  <script src="storage.js?v=22"></script>
+  <script src="ui.js?v=22"></script>
+  <script type="module" src="main.js?v=22"></script>
 </body>
 </html>
