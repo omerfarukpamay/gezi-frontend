@@ -6,14 +6,248 @@ import {
     toPlainTemp
 } from './services/weather.js';
 import { fetchNearbyPlaces, fetchPlaceMetaByName, buildGoogleMapsSearchUrl } from './services/osm.js';
+import { findNearestCtaStation, findNearbyCtaStations, fetchCtaTrainArrivals } from './services/cta.js';
 import {
     haversineDistanceKm,
     estimateTravelMinutes,
     formatMinutesToClock,
     formatDurationLabel,
     getDurationMinutes,
+    formatDistanceMiles,
     updateRouteChips as updateRouteChipsService
 } from './services/routing.js';
+
+    let setActiveDayExternal = null;
+    const PLAN_INSIGHTS_DISMISSED_KEY = 'assistant_plan_insights_dismissed_v1';
+    let planInsightsDismissed = (() => {
+        try { return JSON.parse(localStorage.getItem(PLAN_INSIGHTS_DISMISSED_KEY)) || {}; } catch (e) { return {}; }
+    })();
+    const savePlanInsightsDismissed = () => {
+        try { localStorage.setItem(PLAN_INSIGHTS_DISMISSED_KEY, JSON.stringify(planInsightsDismissed)); } catch (e) {}
+    };
+    function dismissPlanInsight(insightId) {
+        const planKey = getPlanKey();
+        if (!planInsightsDismissed[planKey]) planInsightsDismissed[planKey] = {};
+        planInsightsDismissed[planKey][insightId] = Date.now();
+        savePlanInsightsDismissed();
+        renderPlanInsights();
+    }
+    function isPlanInsightDismissed(insightId) {
+        const planKey = getPlanKey();
+        return !!planInsightsDismissed?.[planKey]?.[insightId];
+    }
+
+    const PLAN_SUGGESTIONS_HINT_SEEN_KEY = 'assistant_plan_suggestions_hint_seen_v1';
+    let planSuggestionsHintSeen = (() => {
+        try { return JSON.parse(localStorage.getItem(PLAN_SUGGESTIONS_HINT_SEEN_KEY)) || {}; } catch (e) { return {}; }
+    })();
+    let planSuggestionsHintTimeout = null;
+    const savePlanSuggestionsHintSeen = () => {
+        try { localStorage.setItem(PLAN_SUGGESTIONS_HINT_SEEN_KEY, JSON.stringify(planSuggestionsHintSeen)); } catch (e) {}
+    };
+    function hasSeenPlanSuggestionsHint(planKey = getPlanKey()) {
+        return !!planSuggestionsHintSeen?.[planKey];
+    }
+    function markPlanSuggestionsHintSeen(planKey = getPlanKey()) {
+        planSuggestionsHintSeen[planKey] = Date.now();
+        savePlanSuggestionsHintSeen();
+    }
+
+    function isPlanFullyConfirmed(planKey = getPlanKey()) {
+        if (!currentItinerary || !Array.isArray(currentItinerary) || currentItinerary.length === 0) return false;
+        if (isPlanLocked(planKey)) return true;
+        if (bookingDeferred?.[planKey]) return true;
+        const dayMap = confirmedDays?.[planKey] || {};
+        const allConfirmed = currentItinerary.every((_, idx) => !!dayMap[idx + 1]);
+        return allConfirmed;
+    }
+    function openAssistantForSuggestion({ dayIndex, activityId, prefillText }) {
+        if (!currentItinerary || !currentItinerary.length) return;
+        if (typeof dayIndex === 'number' && setActiveDayExternal) {
+            setActiveDayExternal(dayIndex);
+        }
+        const day = typeof dayIndex === 'number' ? (currentItinerary[dayIndex] || []) : getActiveDayActivities();
+        const target = activityId ? day.find(a => String(a.id) === String(activityId)) : null;
+        assistantSelectedActivity = target || (day[0] || null);
+        assistantMode = ASSISTANT_STATES.REFINEMENT_CHAT;
+        assistantPendingSave = false;
+        assistantLastSnapshot = JSON.stringify(getActiveDayActivities());
+        renderAssistantInline();
+        const panel = document.getElementById('assistantPanel');
+        if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const input = document.getElementById('assistantChangeInput');
+        if (input && prefillText) {
+            input.value = prefillText;
+            input.focus();
+        }
+    }
+    function parseMilesFromLabel(label) {
+        const m = String(label || '').match(/([\d.]+)\s*mi/i);
+        if (!m) return null;
+        const n = Number(m[1]);
+        return Number.isFinite(n) ? n : null;
+    }
+    function getFirstLegMilesForActiveDay() {
+        const day = getActiveDayActivities();
+        if (!day || !day.length) return null;
+        const label = day[0]?._lastDistance;
+        return parseMilesFromLabel(label);
+    }
+    function renderPlanInsights() {
+        const bannerEl = document.getElementById('planBannerHost');
+        const listEl = document.getElementById('planSuggestions');
+        if (!bannerEl || !listEl) return;
+
+        const hasPlan = currentItinerary && Array.isArray(currentItinerary) && currentItinerary.length > 0;
+        if (!hasPlan) {
+            bannerEl.style.display = 'none';
+            listEl.style.display = 'none';
+            return;
+        }
+
+        if (!isPlanFullyConfirmed()) {
+            bannerEl.style.display = 'none';
+            bannerEl.innerHTML = '';
+            listEl.style.display = 'none';
+            listEl.innerHTML = '';
+            if (planSuggestionsHintTimeout) {
+                clearTimeout(planSuggestionsHintTimeout);
+                planSuggestionsHintTimeout = null;
+            }
+            return;
+        }
+
+        const insights = computePlanInsights();
+        const banner = (insights.banner && !isPlanInsightDismissed(insights.banner.id)) ? insights.banner : null;
+        const suggestions = insights.suggestions || [];
+
+        if (banner) {
+            bannerEl.style.display = 'flex';
+            bannerEl.innerHTML = `
+                <div>
+                    <strong>${banner.title}</strong>
+                    <div class="meta">${banner.subtitle || ''}</div>
+                </div>
+                <div class="actions">
+                    ${(banner.primaryCta || []).map(btn => `<button class="assistant-chip" onclick="${btn.onClick}">${btn.label}</button>`).join('')}
+                    ${(banner.dismissible ? `<button class="assistant-chip" style="opacity:0.85;" onclick="dismissPlanInsight('${banner.id}')">Dismiss</button>` : '')}
+                </div>
+            `;
+        } else {
+            bannerEl.style.display = 'none';
+            bannerEl.innerHTML = '';
+        }
+
+        const visibleSuggestions = suggestions.filter(s => !isPlanInsightDismissed(s.id));
+        if (!visibleSuggestions.length) {
+            if (hasSeenPlanSuggestionsHint()) {
+                listEl.style.display = 'none';
+                listEl.innerHTML = '';
+                return;
+            }
+
+            listEl.style.display = 'grid';
+            listEl.innerHTML = `
+                    <div class="plan-suggestion-card" style="opacity:0.9;">
+                        <div class="plan-suggestion-icon" style="background: rgba(148,163,184,0.10); border-color: rgba(148,163,184,0.22); color: rgba(226,232,240,0.95);">
+                            <i class="fa-solid fa-lightbulb"></i>
+                        </div>
+                        <div style="flex:1;">
+                            <div class="plan-suggestion-title">Suggestions will appear here</div>
+                            <div class="plan-suggestion-sub">When weather, timing, distance, or bookings affect your plan, you will get quick, optional recommendations here.</div>
+                        </div>
+                    </div>
+                `;
+
+            if (planSuggestionsHintTimeout) clearTimeout(planSuggestionsHintTimeout);
+            planSuggestionsHintTimeout = setTimeout(() => {
+                markPlanSuggestionsHintSeen();
+                renderPlanInsights();
+            }, 7000);
+            return;
+        }
+
+        if (!hasSeenPlanSuggestionsHint()) {
+            markPlanSuggestionsHintSeen();
+            if (planSuggestionsHintTimeout) {
+                clearTimeout(planSuggestionsHintTimeout);
+                planSuggestionsHintTimeout = null;
+            }
+        }
+        listEl.style.display = 'grid';
+        listEl.innerHTML = visibleSuggestions.map(s => `
+            <div class="plan-suggestion-card">
+                <div class="plan-suggestion-icon"><i class="${s.iconClass}"></i></div>
+                <div style="flex:1;">
+                    <div class="plan-suggestion-title">${s.title}</div>
+                    <div class="plan-suggestion-sub">${s.subtitle || ''}</div>
+                    <div class="plan-suggestion-actions">
+                        ${(s.actions || []).map(btn => `<button class="assistant-chip" onclick="${btn.onClick}">${btn.label}</button>`).join('')}
+                        ${(s.dismissible ? `<button class="assistant-chip" style="opacity:0.85;" onclick="dismissPlanInsight('${s.id}')">Dismiss</button>` : '')}
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function computePlanInsights() {
+        const dayDate = tripDates && tripDates[activeDayIndex] ? tripDates[activeDayIndex] : null;
+        const weather = dayDate ? getWeatherSnapshotSync(dayDate) : null;
+        const dayActivities = getActiveDayActivities();
+        const outdoorActs = (dayActivities || []).filter(a => isOutdoor(a));
+
+        const suggestions = [];
+        let banner = null;
+
+        // Level B: plan lock summary (action needed, but not modal)
+        if (isPlanLocked()) {
+            banner = {
+                id: 'plan_locked',
+                title: 'Plan locked due to bookings',
+                subtitle: 'Booked stops are locked. You can still use Tour Guide and check-ins.',
+                dismissible: true,
+                primaryCta: [
+                    { label: 'Review bookings', onClick: `setAssistantMode('${ASSISTANT_STATES.BOOKING_ALERT}')` }
+                ]
+            };
+        }
+
+        // Level A: weather-based suggestion
+        if (weather && outdoorActs.length) {
+            const isRisk = ['Rain', 'Rain showers', 'Snow', 'Thunderstorm'].includes(weather.desc) || (typeof weather.precipProb === 'number' && weather.precipProb >= 50);
+            if (isRisk) {
+                const target = outdoorActs[0];
+                suggestions.push({
+                    id: 'weather_outdoor_swap',
+                    iconClass: 'fa-solid fa-cloud-rain',
+                    title: 'Weather may affect outdoor stops',
+                    subtitle: `Forecast shows ${weather.desc}${typeof weather.precipProb === 'number' ? ` (${weather.precipProb}% precip.)` : ''}. Consider swapping or rescheduling outdoor activities.`,
+                    dismissible: true,
+                    actions: [
+                        { label: 'Review in Assistant', onClick: `openAssistantForSuggestion({ dayIndex: ${activeDayIndex}, activityId: ${JSON.stringify(target.id)}, prefillText: ${JSON.stringify('Swap this outdoor activity with an indoor alternative and adjust times if needed.')} })` }
+                    ]
+                });
+            }
+        }
+
+        // Level A: transit hint for long first leg (Chicago CTA placeholder)
+        const firstLegMiles = getFirstLegMilesForActiveDay();
+        const transportMode = getTransportMode();
+        if (settingsStore?.locationEnabled && transportMode === 'walk' && typeof firstLegMiles === 'number' && firstLegMiles >= 1.5) {
+            suggestions.push({
+                id: 'transit_hint_long_leg',
+                iconClass: 'fa-solid fa-train-subway',
+                title: 'Consider CTA transit for a long walk',
+                subtitle: `Your first leg is about ${firstLegMiles.toFixed(1)} mi. Public transit can save time for longer distances.`,
+                dismissible: true,
+                actions: [
+                    { label: 'Open transit options', onClick: 'openTransitPreview()' }
+                ]
+            });
+        }
+
+        return { banner, suggestions };
+    }
 
 /* --------- DATA: 3 TEST EXPERIENCES ---------- */
     const experiences = [
@@ -62,6 +296,86 @@ import {
     let authMode = 'login';
     let favorites = window.loadFavorites();
     let settingsStore = window.loadSettingsStore();
+
+    const USER_LOCATION_STORAGE_KEY = 'assistant_user_location_v1';
+    function loadUserLocation() {
+        try { return JSON.parse(localStorage.getItem(USER_LOCATION_STORAGE_KEY)) || null; } catch (e) { return null; }
+    }
+    function saveUserLocation(data) {
+        try { localStorage.setItem(USER_LOCATION_STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
+    }
+    function clearUserLocation() {
+        try { localStorage.removeItem(USER_LOCATION_STORAGE_KEY); } catch (e) {}
+    }
+    function getUserLocationSnapshot(maxAgeMs = 1000 * 60 * 60 * 6) {
+        const snap = loadUserLocation();
+        if (!snap || !snap.ts) return null;
+        if (Date.now() - snap.ts > maxAgeMs) return null;
+        if (typeof snap.lat !== 'number' || typeof snap.lng !== 'number') return null;
+        return snap;
+    }
+    function requestUserLocationOnce(timeoutMs = 10000) {
+        return new Promise((resolve, reject) => {
+            if (!navigator.geolocation) {
+                reject(new Error('Geolocation is not available in this browser.'));
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const lat = pos?.coords?.latitude;
+                    const lng = pos?.coords?.longitude;
+                    const accuracy = pos?.coords?.accuracy;
+                    if (typeof lat !== 'number' || typeof lng !== 'number') {
+                        reject(new Error('Could not read your location.'));
+                        return;
+                    }
+                    resolve({ lat, lng, accuracy, ts: Date.now() });
+                },
+                (err) => reject(err),
+                { enableHighAccuracy: false, timeout: timeoutMs, maximumAge: 1000 * 60 * 5 }
+            );
+        });
+    }
+
+    const LOCATION_PROMPT_DISMISSED_KEY = 'assistant_location_prompt_dismissed_v1';
+    let locationPromptDismissed = (() => {
+        try { return JSON.parse(localStorage.getItem(LOCATION_PROMPT_DISMISSED_KEY)) || {}; } catch (e) { return {}; }
+    })();
+    const saveLocationPromptDismissed = () => {
+        try { localStorage.setItem(LOCATION_PROMPT_DISMISSED_KEY, JSON.stringify(locationPromptDismissed)); } catch (e) {}
+    };
+    function isLocationPromptDismissed(planKey = getPlanKey(), cooldownMs = 1000 * 60 * 60 * 24) {
+        const ts = locationPromptDismissed?.[planKey];
+        if (!ts) return false;
+        return Date.now() - ts < cooldownMs;
+    }
+    function updateLocationPlanPromptVisibility() {
+        const el = document.getElementById('locationPermissionPrompt');
+        if (!el) return;
+        const hasPlan = currentItinerary && Array.isArray(currentItinerary) && currentItinerary.length > 0;
+        const canAsk = typeof navigator !== 'undefined' && !!navigator.geolocation;
+        const shouldShow =
+            hasPlan &&
+            canAsk &&
+            !settingsStore?.locationEnabled &&
+            !isLocationPromptDismissed(getPlanKey());
+        el.style.display = shouldShow ? 'flex' : 'none';
+    }
+    function dismissLocationPlanPrompt() {
+        locationPromptDismissed[getPlanKey()] = Date.now();
+        saveLocationPromptDismissed();
+        updateLocationPlanPromptVisibility();
+    }
+    async function enableLocationFromPlanPrompt() {
+        const settingsToggle = document.getElementById('settingsLocationToggle');
+        if (settingsToggle) settingsToggle.checked = true;
+        await toggleLocationFromSettings(true);
+        if (settingsStore?.locationEnabled) {
+            delete locationPromptDismissed[getPlanKey()];
+            saveLocationPromptDismissed();
+        }
+        updateLocationPlanPromptVisibility();
+    }
     let lastAiContext = null;
     let assistantOpen = false;
     let assistantFullscreen = false;
@@ -77,7 +391,8 @@ import {
         BOOKING_ALERT: 'booking_alert',
         BOOKING_CONFIRM: 'booking_confirm',
         BOOKING_DEFER: 'booking_defer',
-        TOUR_GUIDE_READY: 'tour_guide_ready'
+        TOUR_GUIDE_READY: 'tour_guide_ready',
+        TRANSIT_INFO: 'transit_info'
     };
     const ALLOWED_ASSISTANT_STATES = new Set(Object.values(ASSISTANT_STATES));
     let assistantMode = ASSISTANT_STATES.REFINEMENT_INITIAL;
@@ -104,6 +419,8 @@ import {
         try { return JSON.parse(localStorage.getItem('assistant_tour_guide_unlocked_v1')) || {}; } catch (e) { return {}; }
     })();
     let assistantBookingSummary = null;
+    let assistantTransitHtml = '';
+    let assistantPrevMode = null;
 
     const savePlanLocks = () => {
         try { localStorage.setItem('assistant_plan_locks_v1', JSON.stringify(planLocks)); } catch (e) {}
@@ -665,6 +982,7 @@ function writeBackDayActivities(activities) {
             assistantMode = ASSISTANT_STATES.REFINEMENT_INITIAL;
         }
         renderAssistantInline();
+        renderPlanInsights();
     }
 
     // Save any pending assistant edits then confirm the day
@@ -682,6 +1000,9 @@ function writeBackDayActivities(activities) {
         const chatPrompt = document.getElementById('assistantChatPrompt');
         const booking = document.getElementById('assistantBookingPrompt');
         const bookingList = document.getElementById('assistantBookingList');
+        const insights = document.getElementById('assistantInsights');
+        const insightsBody = document.getElementById('assistantInsightsBody');
+        const insightsActions = document.getElementById('assistantInsightsActions');
         const saveActions = document.getElementById('assistantSaveActions');
         const chatInputRow = document.querySelector('.assistant-chat-input');
         const question = document.querySelector('.assistant-question');
@@ -695,6 +1016,7 @@ function writeBackDayActivities(activities) {
         activityPrompt.style.display = 'none';
         chat.style.display = 'none';
         booking.style.display = 'none';
+        if (insights) insights.style.display = 'none';
         if (saveActions) saveActions.style.display = 'none';
         if (chatInputRow) chatInputRow.style.display = 'grid';
 
@@ -830,6 +1152,19 @@ function writeBackDayActivities(activities) {
                 }
                 break;
             }
+            case ASSISTANT_STATES.TRANSIT_INFO: {
+                if (questionTitle) questionTitle.textContent = 'Transit options';
+                if (questionSub) questionSub.textContent = '';
+                if (questionActions) questionActions.innerHTML = '';
+                if (insights) insights.style.display = 'block';
+                if (insightsBody) insightsBody.innerHTML = assistantTransitHtml || 'No transit info available.';
+                if (insightsActions) {
+                    insightsActions.innerHTML = `
+                        <button class="assistant-chip" onclick="closeTransitInfo()">Back</button>
+                    `;
+                }
+                break;
+            }
         }
 
         // Auto-transition only between booking alert and ready when bookings change
@@ -947,6 +1282,7 @@ function populateAssistantActivities() {
         assistantMode = ASSISTANT_STATES.TOUR_GUIDE_READY;
         renderItineraryUI(currentItinerary, tripDates || []);
         renderAssistantInline();
+        renderPlanInsights();
     }
 
     function deferBookingsAndStartTour(fromDeferScreen = false) {
@@ -961,6 +1297,7 @@ function populateAssistantActivities() {
         assistantMode = ASSISTANT_STATES.TOUR_GUIDE_READY;
         renderItineraryUI(currentItinerary, tripDates || []);
         renderAssistantInline();
+        renderPlanInsights();
     }
 
     function backToPlanEditing() {
@@ -1460,7 +1797,7 @@ function populateAssistantActivities() {
             const titleMap = { food: 'Food & drinks', coffee: 'Coffee', museum: 'Museums', attraction: 'Attractions' };
             const title = titleMap[kind] || 'Nearby';
             const lines = places.map(p => {
-                const dist = `${Math.max(0.1, p.distanceKm).toFixed(1)} km`;
+                const dist = formatDistanceMiles(Math.max(0.1, p.distanceKm), 1);
                 const status = p.openStatus === 'open' ? 'Open now' : (p.openStatus === 'closed' ? 'Closed' : 'Hours unknown');
                 const maps = buildGoogleMapsSearchUrl(p.name, p.lat, p.lng);
                 const addr = p.address ? ` • ${p.address}` : '';
@@ -1477,7 +1814,9 @@ function populateAssistantActivities() {
 
     async function suggestNearby(kind, el) {
         const day = getActiveDayActivities();
-        const center = day.find(a => a.lat && a.lng) || currentItinerary.flat().find(a => a.lat && a.lng) || LOOP_COORDS;
+        const loc = settingsStore?.locationEnabled ? getUserLocationSnapshot() : null;
+        const fallbackCenter = loc ? { lat: loc.lat, lng: loc.lng } : LOOP_COORDS;
+        const center = day.find(a => a.lat && a.lng) || currentItinerary.flat().find(a => a.lat && a.lng) || fallbackCenter;
         await suggestNearbyAt(center.lat, center.lng, kind, el);
     }
 
@@ -1498,7 +1837,7 @@ function populateAssistantActivities() {
         try {
             const meta = await fetchPlaceMetaByName(activity.lat, activity.lng, activity.title);
             if (!meta) {
-                metaEl.innerHTML = '<div style="color:var(--secondary-text); font-size:0.85rem;">No place details found in OpenStreetMap.</div>';
+                metaEl.innerHTML = '<div style="color:var(--secondary-text); font-size:0.85rem;">No OpenStreetMap match found for this place.</div>';
                 activity._osmMeta = { loaded: true, html: metaEl.innerHTML };
                 return;
             }
@@ -1708,11 +2047,13 @@ function populateAssistantActivities() {
         const daily = document.getElementById('toggleDailyReminder');
         const themeSelect = document.getElementById('themeSelect');
         const tgSettings = document.getElementById('settingsTourGuideToggle');
+        const locationToggle = document.getElementById('settingsLocationToggle');
         if (price) price.checked = !!settingsStore.priceAlerts;
         if (weather) weather.checked = !!settingsStore.weatherAlerts;
         if (daily) daily.checked = !!settingsStore.dailyReminder;
         if (themeSelect) themeSelect.value = settingsStore.theme || 'gold';
         if (tgSettings) tgSettings.checked = !!userPreferences.tourGuide;
+        if (locationToggle) locationToggle.checked = !!settingsStore.locationEnabled;
     }
 
     /* ---------- UI HELPERS ---------- */
@@ -1747,6 +2088,7 @@ function populateAssistantActivities() {
         if (target) target.classList.add('active');
 
         updateHeaderActionsVisibility();
+        updateLocationPlanPromptVisibility();
 
         if (id === 'profile' || id === 'auth' || id === 'settings' || id === 'pastTrips') {
             setActiveTab('profile');
@@ -1806,6 +2148,15 @@ function populateAssistantActivities() {
         try { localStorage.removeItem('assistant_tour_guide_unlocked_v1'); } catch (e) {}
         try { localStorage.removeItem('assistant_confirmed_days_v1'); } catch (e) {}
         try { localStorage.removeItem('planner_change_history_v1'); } catch (e) {}
+        try { localStorage.removeItem(PLAN_INSIGHTS_DISMISSED_KEY); } catch (e) {}
+        try { localStorage.removeItem(PLAN_SUGGESTIONS_HINT_SEEN_KEY); } catch (e) {}
+
+        planInsightsDismissed = {};
+        planSuggestionsHintSeen = {};
+        if (planSuggestionsHintTimeout) {
+            clearTimeout(planSuggestionsHintTimeout);
+            planSuggestionsHintTimeout = null;
+        }
 
         checkins = {};
         bookings = {};
@@ -1846,6 +2197,10 @@ function populateAssistantActivities() {
     }
 
     function openHome() {
+        if (currentUser) {
+            openPlannerTab();
+            return;
+        }
         showOnlySection('home');
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -2576,6 +2931,8 @@ function populateAssistantActivities() {
         }
         setTimeout(() => {
             if (toEl) toEl.classList.add('active');
+            updateHeaderActionsVisibility();
+            updateLocationPlanPromptVisibility();
         }, 450); 
     }
 
@@ -2819,6 +3176,44 @@ function populateAssistantActivities() {
         showToast('Tour guide preference updated.', 'success');
     }
 
+    async function toggleLocationFromSettings(isChecked) {
+        const toggleEl = document.getElementById('settingsLocationToggle');
+        if (!isChecked) {
+            settingsStore.locationEnabled = false;
+            saveSettingsStore(settingsStore);
+            clearUserLocation();
+            showToast('Location access disabled.', 'info');
+            updateLocationPlanPromptVisibility();
+            return;
+        }
+
+        try {
+            showToast('Requesting location permission...', 'info');
+            const location = await requestUserLocationOnce();
+            saveUserLocation(location);
+            settingsStore.locationEnabled = true;
+            saveSettingsStore(settingsStore);
+            showToast('Location enabled.', 'success');
+            updateLocationPlanPromptVisibility();
+        } catch (err) {
+            settingsStore.locationEnabled = false;
+            saveSettingsStore(settingsStore);
+            if (toggleEl) toggleEl.checked = false;
+
+            const code = err?.code;
+            const msg =
+                code === 1
+                    ? 'Location permission denied. Please enable it in your browser settings and try again.'
+                    : code === 2
+                        ? 'Location is unavailable right now. Please try again.'
+                        : code === 3
+                            ? 'Location request timed out. Please try again.'
+                    : (err?.message || 'Could not enable location.');
+            showToast(msg, 'error');
+            updateLocationPlanPromptVisibility();
+        }
+    }
+
 
     function exportUserData() {
         const payload = {
@@ -2920,7 +3315,116 @@ function populateAssistantActivities() {
     }
 
     function updateRouteChips(dayNumber) {
-        return updateRouteChipsService({ dayNumber, getTransportMode, itinerary: currentItinerary });
+        const loc = settingsStore?.locationEnabled ? getUserLocationSnapshot() : null;
+        const originOverride = loc ? { lat: loc.lat, lng: loc.lng } : null;
+        return updateRouteChipsService({ dayNumber, getTransportMode, itinerary: currentItinerary, originOverride });
+    }
+
+    async function openTransitPreview() {
+        const loc = settingsStore?.locationEnabled ? getUserLocationSnapshot() : null;
+        if (!loc) {
+            showToast('Enable location to see nearby CTA transit options.', 'info');
+            return;
+        }
+        try {
+            showToast('Calculating nearby transit options...', 'info');
+
+            let nearby = null;
+            let gtfsFailed = false;
+            try {
+                const q = `?lat=${encodeURIComponent(loc.lat)}&lng=${encodeURIComponent(loc.lng)}&radius=2000&limit=18`;
+                nearby = await window.apiRequest(`/api/transit/nearby${q}`, { method: 'GET' });
+            } catch (e) {
+                nearby = null;
+                gtfsFailed = true;
+            }
+
+            const activeDay = getActiveDayActivities();
+            const firstStop = activeDay?.[0];
+            const hasDest = !!firstStop && typeof firstStop.lat === 'number' && typeof firstStop.lng === 'number';
+            const googleTransitUrl = hasDest
+                ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(`${loc.lat},${loc.lng}`)}&destination=${encodeURIComponent(`${firstStop.lat},${firstStop.lng}`)}&travelmode=transit`
+                : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('CTA near me')}`;
+            const ctaTrackerUrl = 'https://www.transitchicago.com/traintracker/';
+            const ctaSearchUrl = `https://www.google.com/search?q=${encodeURIComponent('CTA stops near me')}`;
+
+            const stops = Array.isArray(nearby?.stops) ? nearby.stops : [];
+            const trains = stops.filter(s => (s.modes || []).includes('train')).slice(0, 4);
+            const buses = stops.filter(s => (s.modes || []).includes('bus')).slice(0, 4);
+
+            const formatStop = (s) => {
+                const dist = typeof s.distanceMi === 'number' ? `${s.distanceMi.toFixed(2)} mi` : '';
+                const routes = Array.isArray(s.routes) ? s.routes : [];
+                const short = routes
+                    .filter(r => r && (r.type === 'bus' || r.type === 'train'))
+                    .map(r => r.shortName)
+                    .filter(Boolean);
+                const uniq = Array.from(new Set(short)).slice(0, 10);
+                const routesLabel = uniq.length ? uniq.join(', ') : 'Routes unknown';
+                return `<div style="margin-top:8px;">
+                    <strong>${s.name}</strong> <span style="color:var(--secondary-text); font-size:0.85rem;">(${dist})</span><br>
+                    <span style="color:var(--secondary-text); font-size:0.85rem;">Lines: ${routesLabel}</span>
+                </div>`;
+            };
+
+            let trainsHtml = '';
+            let busesHtml = '';
+
+            if (trains.length || buses.length) {
+                trainsHtml = trains.length
+                    ? `<div style="margin-top:10px;"><strong>Trains</strong>${trains.map(formatStop).join('')}</div>`
+                    : `<div style="margin-top:10px; color:var(--secondary-text); font-size:0.85rem;">No nearby train stations found.</div>`;
+                busesHtml = buses.length
+                    ? `<div style="margin-top:10px;"><strong>Buses</strong>${buses.map(formatStop).join('')}</div>`
+                    : `<div style="margin-top:10px; color:var(--secondary-text); font-size:0.85rem;">No nearby bus stops found.</div>`;
+            } else if (!gtfsFailed && nearby) {
+                // GTFS reachable but no CTA stops in range (likely outside CTA coverage).
+                trainsHtml = `<div style="margin-top:10px; color:var(--secondary-text); font-size:0.85rem;">No CTA transit stops found near your location. CTA data currently covers Chicago only.</div>`;
+                busesHtml = '';
+            } else {
+                // Fallback to lightweight train-only station lookup (no GTFS backend needed).
+                const stations = await findNearbyCtaStations(loc.lat, loc.lng, 3000, 3);
+                const linesFor = (s) => (Array.isArray(s?.lines) && s.lines.length ? s.lines.join(', ') : 'Unknown lines');
+                const stationsHtml = (stations || []).map((s, idx) => {
+                    const distMi = formatDistanceMiles(haversineDistanceKm({ lat: loc.lat, lng: loc.lng }, s), 1);
+                    return `<div style="margin-top:${idx === 0 ? 8 : 6}px;">
+                        <strong>${s.name}</strong> <span style="color:var(--secondary-text); font-size:0.85rem;">(${distMi})</span><br>
+                        <span style="color:var(--secondary-text); font-size:0.85rem;">Lines: ${linesFor(s)}</span>
+                    </div>`;
+                }).join('');
+                trainsHtml = stationsHtml
+                    ? `<div style="margin-top:10px;"><strong>Trains</strong>${stationsHtml}</div>`
+                    : `<div style="margin-top:10px; color:var(--secondary-text); font-size:0.85rem;">No nearby train stations found.</div>`;
+                busesHtml = gtfsFailed
+                    ? `<div style="margin-top:10px; color:var(--secondary-text); font-size:0.85rem;">Bus stops require the GTFS backend endpoint. For local testing, open the app with <strong>?api=local</strong> and run the backend on port 3001.</div>`
+                    : `<div style="margin-top:10px; color:var(--secondary-text); font-size:0.85rem;">No nearby bus stops found.</div>`;
+            }
+
+            assistantTransitHtml = `
+                <div style="color:var(--secondary-text); font-size:0.85rem;">Nearby transit stops:</div>
+                ${trainsHtml}
+                ${busesHtml}
+                <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+                    <a class="assistant-chip" href="${googleTransitUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">Open Google Maps (Transit)</a>
+                    <a class="assistant-chip" href="${ctaTrackerUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">CTA Train Tracker</a>
+                    <a class="assistant-chip" href="${ctaSearchUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">Search nearby stops</a>
+                </div>
+            `;
+            assistantPrevMode = assistantMode;
+            assistantMode = ASSISTANT_STATES.TRANSIT_INFO;
+            renderAssistantInline();
+            const panel = document.getElementById('assistantPanel');
+            if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (e) {
+            showToast(e.message || 'CTA transit preview failed.', 'error');
+        }
+    }
+
+    function closeTransitInfo() {
+        assistantTransitHtml = '';
+        assistantMode = assistantPrevMode || ASSISTANT_STATES.TOUR_GUIDE_READY;
+        assistantPrevMode = null;
+        renderAssistantInline();
     }
 
     function scoreActivityForPlan(activity, cursor, dayIdx) {
@@ -3084,7 +3588,10 @@ function populateAssistantActivities() {
             }
             renderAssistantInline();
             updateRouteChips(idx + 1);
+            renderPlanInsights();
+            setTimeout(() => renderPlanInsights(), 700);
         };
+        setActiveDayExternal = setActiveDay;
 
         if (dayTabs) {
             itinerary.forEach((_, index) => {
@@ -3460,7 +3967,14 @@ function populateAssistantActivities() {
         });
         if (!res.ok) {
             const errText = await res.text();
-            throw new Error(`AI request failed: ${res.status} ${errText}`);
+            const normalized = String(errText || '').replace(/\s+/g, ' ').trim();
+            const msg = normalized.includes('OPENAI_API_KEY') || normalized.includes('OPENAI_KEY')
+                ? 'AI is not configured on the server yet.'
+                : `AI request failed (${res.status}).`;
+            const e = new Error(msg);
+            e.status = res.status;
+            e.raw = normalized;
+            throw e;
         }
         const data = await res.json();
         return data.reply || '';
@@ -3493,10 +4007,8 @@ function populateAssistantActivities() {
             }).join('');
             metaEl.textContent = `Profile: Tempo ${userPreferences.tempo} | Price ${userPreferences.price} | Transport ${userPreferences.transportation}`;
         } catch (e) {
-            console.error(e);
-            listEl.innerHTML = `<div class="hero-card-line"><span>--</span><strong>Could not load suggestions.</strong></div>`;
-            metaEl.textContent = e.message || 'Error';
-            showToast(e.message || 'Suggestions failed.', 'error');
+            listEl.innerHTML = `<div class="hero-card-line"><span>--</span><strong>Suggestions unavailable.</strong></div>`;
+            metaEl.textContent = e?.message || 'Unavailable';
         }
     }
 
@@ -3959,6 +4471,14 @@ export {
     setupEvaluationScreen,
     toggleTourGuide,
     toggleTourGuideFromSettings,
+    toggleLocationFromSettings,
+    enableLocationFromPlanPrompt,
+    dismissLocationPlanPrompt,
+    renderPlanInsights,
+    dismissPlanInsight,
+    openAssistantForSuggestion,
+    openTransitPreview,
+    closeTransitInfo,
     exportUserData,
     openImportData,
     handleImportData,

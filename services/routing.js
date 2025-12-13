@@ -23,6 +23,17 @@ export function estimateTravelMinutes(distanceKm, mode) {
     return Math.max(5, Math.round(base + (overhead[mode] || 4)));
 }
 
+export function kmToMiles(km) {
+    const n = typeof km === 'number' ? km : Number(km);
+    if (!Number.isFinite(n)) return 0;
+    return n * 0.621371;
+}
+
+export function formatDistanceMiles(distanceKm, digits = 1) {
+    const miles = kmToMiles(distanceKm);
+    return `${miles.toFixed(digits)} mi`;
+}
+
 export function formatMinutesToClock(totalMinutes) {
     const normalized = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
     const h = Math.floor(normalized / 60);
@@ -91,10 +102,11 @@ async function fetchRouteInfo(origin, destination, transportMode) {
     }
 }
 
-export async function updateRouteChips({ dayNumber, getTransportMode, itinerary }) {
+export async function updateRouteChips({ dayNumber, getTransportMode, itinerary, originOverride }) {
     const chips = document.querySelectorAll(`.route-chip[data-day='${dayNumber}']`);
     const mode = typeof getTransportMode === 'function' ? getTransportMode() : 'walk';
     const traffic = trafficMultiplierHint(mode);
+    const hasOriginOverride = !!originOverride && typeof originOverride.lat === 'number' && typeof originOverride.lng === 'number';
 
     for (const chip of chips) {
         const prevLat = parseFloat(chip.dataset.prevLat);
@@ -102,17 +114,20 @@ export async function updateRouteChips({ dayNumber, getTransportMode, itinerary 
         const lat = parseFloat(chip.dataset.lat);
         const lng = parseFloat(chip.dataset.lng);
         const idx = parseInt(chip.dataset.idx, 10);
-        if (Number.isNaN(lat) || Number.isNaN(lng) || Number.isNaN(prevLat) || Number.isNaN(prevLng)) {
+        const useOverride = hasOriginOverride && idx === 0;
+        const missingPrev = Number.isNaN(prevLat) || Number.isNaN(prevLng);
+        if (Number.isNaN(lat) || Number.isNaN(lng) || (!useOverride && missingPrev)) {
             chip.textContent = 'Route n/a';
             continue;
         }
         chip.textContent = 'Routing...';
-        const info = await fetchRouteInfo({ lat: prevLat, lng: prevLng }, { lat, lng }, mode);
+        const from = useOverride ? { lat: originOverride.lat, lng: originOverride.lng } : { lat: prevLat, lng: prevLng };
+        const info = await fetchRouteInfo(from, { lat, lng }, mode);
         if (!info) {
             chip.textContent = 'Route n/a';
             continue;
         }
-        const distanceLabel = `${info.distanceKm.toFixed(1)} km`;
+        const distanceLabel = formatDistanceMiles(info.distanceKm, 1);
         const base = info.durationMin || 0;
         const adjusted = Math.max(1, Math.round(base * traffic.multiplier));
         const durationLabel = `${adjusted} min`;
@@ -126,4 +141,3 @@ export async function updateRouteChips({ dayNumber, getTransportMode, itinerary 
         }
     }
 }
-

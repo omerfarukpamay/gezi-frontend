@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
     <link rel="icon" href="data:image/png;base64,iVBORw0KGgo=">
 
-    <link rel="stylesheet" href="styles.css?v=3">
+    <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
 
@@ -322,6 +322,16 @@
                             <span class="slider"></span>
                         </label>
                     </label>
+                    <label class="tour-guide-toggle" style="border-color: rgba(148,163,184,0.2);">
+                        <div>
+                            <strong style="font-size:0.9rem;">Location access</strong>
+                            <div style="font-size:0.8rem; color:var(--secondary-text);">Improve nearby suggestions and travel-time estimates.</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="settingsLocationToggle" onchange="toggleLocationFromSettings(this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </label>
 
                     <div class="profile-divider"></div>
             <div class="small-label">Notifications</div>
@@ -469,6 +479,25 @@
 
             <div class="day-summary" id="daySummary"></div>
 
+            <div id="locationPermissionPrompt" class="location-permission-prompt" style="display:none;">
+                <div class="location-permission-icon">
+                    <i class="fa-solid fa-location-crosshairs"></i>
+                </div>
+                <div class="location-permission-content">
+                    <div class="location-permission-title">Enable location for a better plan</div>
+                    <div class="location-permission-sub">
+                        We use your location to improve nearby suggestions and travel-time estimates. You can turn this off anytime in Settings.
+                    </div>
+                    <div class="location-permission-actions">
+                        <button class="assistant-chip" onclick="enableLocationFromPlanPrompt()">Enable location</button>
+                        <button class="assistant-chip" style="opacity:0.85;" onclick="dismissLocationPlanPrompt()">Not now</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="planBannerHost" class="plan-banner" style="display:none;"></div>
+            <div id="planSuggestions" class="plan-suggestions" style="display:none;"></div>
+
             <div class="results-scroll-content" id="itineraryContent"></div>
 
             <div class="assistant-panel" id="assistantPanel">
@@ -503,6 +532,11 @@
                         <div class="assistant-title" style="margin-bottom:6px;">Caution, action required!</div>
                         <div class="assistant-sub" style="margin-bottom:10px;">Bookings / reservations / tickets needed for the following:</div>
                         <div class="assistant-booking-list" id="assistantBookingList"></div>
+                    </div>
+                    <div class="assistant-insights" id="assistantInsights" style="display:none;">
+                        <div class="assistant-title" style="margin-bottom:6px;">Transit options</div>
+                        <div class="assistant-sub" id="assistantInsightsBody" style="margin-bottom:10px;"></div>
+                        <div class="assistant-actions-row" id="assistantInsightsActions"></div>
                     </div>
                 </div>
             </div>
@@ -552,9 +586,9 @@
 
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<script src="api.js?v=4"></script>
-<script src="storage.js?v=4"></script>
-<script src="ui.js?v=4"></script>
-<script type="module" src="main.js?v=4"></script>
+<script src="api.js?v=17"></script>
+<script src="storage.js?v=17"></script>
+<script src="ui.js?v=17"></script>
+<script type="module" src="main.js?v=17"></script>
 </body>
 </html>

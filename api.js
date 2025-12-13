@@ -1,5 +1,31 @@
 // API helpers (global)
-window.API_BASE = 'https://gezi-backend.onrender.com';
+// Default backend: Render. You can override for local dev:
+// - Add `?api=local` to use `http://127.0.0.1:3001`
+// - Or set `localStorage.gezi_api_base` to a full URL.
+(() => {
+    const params = new URLSearchParams(window.location.search);
+    const param = String(params.get('api') || '').trim();
+    const stored = (() => {
+        try { return String(localStorage.getItem('gezi_api_base') || '').trim(); } catch (e) { return ''; }
+    })();
+
+    const RENDER_BASE = 'https://gezi-backend.onrender.com';
+    const LOCAL_BASE = 'http://127.0.0.1:3001';
+
+    if (param === 'local') {
+        window.API_BASE = LOCAL_BASE;
+        return;
+    }
+    if (param && /^https?:\/\//i.test(param)) {
+        window.API_BASE = param.replace(/\/+$/, '');
+        return;
+    }
+    if (stored && /^https?:\/\//i.test(stored)) {
+        window.API_BASE = stored.replace(/\/+$/, '');
+        return;
+    }
+    window.API_BASE = RENDER_BASE;
+})();
 
 window.getAuthToken = function getAuthToken() {
     try { return sessionStorage.getItem('auth_token'); } catch (e) { return null; }

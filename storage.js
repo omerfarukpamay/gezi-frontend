@@ -81,10 +81,10 @@ window.saveFavorites = function saveFavorites(favs) {
 window.loadSettingsStore = function loadSettingsStore() {
     try {
         const raw = localStorage.getItem(window.STORAGE_KEYS.settings);
-        if (!raw) return { theme: 'gold', priceAlerts: false, weatherAlerts: false, dailyReminder: false };
+        if (!raw) return { theme: 'gold', priceAlerts: false, weatherAlerts: false, dailyReminder: false, locationEnabled: false };
         return JSON.parse(raw);
     } catch (e) {
-        return { theme: 'gold', priceAlerts: false, weatherAlerts: false, dailyReminder: false };
+        return { theme: 'gold', priceAlerts: false, weatherAlerts: false, dailyReminder: false, locationEnabled: false };
     }
 };
 window.saveSettingsStore = function saveSettingsStore(data) {
