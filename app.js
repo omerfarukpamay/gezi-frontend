@@ -1,4 +1,19 @@
 import './state.js';
+import {
+    DEFAULT_CITY_COORDS,
+    getWeatherSnapshotSync,
+    prefetchWeatherForTripDates as prefetchWeatherForTripDatesBase,
+    toPlainTemp
+} from './services/weather.js';
+import { fetchNearbyPlaces, fetchPlaceMetaByName, buildGoogleMapsSearchUrl } from './services/osm.js';
+import {
+    haversineDistanceKm,
+    estimateTravelMinutes,
+    formatMinutesToClock,
+    formatDurationLabel,
+    getDurationMinutes,
+    updateRouteChips as updateRouteChipsService
+} from './services/routing.js';
 
 /* --------- DATA: 3 TEST EXPERIENCES ---------- */
     const experiences = [
@@ -60,6 +75,8 @@ import './state.js';
         REFINEMENT_CHAT: 'refinement_chat',
         REFINEMENT_POST_CHANGE: 'refinement_post_change',
         BOOKING_ALERT: 'booking_alert',
+        BOOKING_CONFIRM: 'booking_confirm',
+        BOOKING_DEFER: 'booking_defer',
         TOUR_GUIDE_READY: 'tour_guide_ready'
     };
     const ALLOWED_ASSISTANT_STATES = new Set(Object.values(ASSISTANT_STATES));
@@ -77,6 +94,53 @@ import './state.js';
     const loadBookings = window.loadBookings;
     const saveBookings = window.saveBookings;
     let bookings = loadBookings();
+    let planLocks = (() => {
+        try { return JSON.parse(localStorage.getItem('assistant_plan_locks_v1')) || {}; } catch (e) { return {}; }
+    })();
+    let bookingDeferred = (() => {
+        try { return JSON.parse(localStorage.getItem('assistant_booking_deferred_v1')) || {}; } catch (e) { return {}; }
+    })();
+    let tourGuideUnlocked = (() => {
+        try { return JSON.parse(localStorage.getItem('assistant_tour_guide_unlocked_v1')) || {}; } catch (e) { return {}; }
+    })();
+    let assistantBookingSummary = null;
+
+    const savePlanLocks = () => {
+        try { localStorage.setItem('assistant_plan_locks_v1', JSON.stringify(planLocks)); } catch (e) {}
+    };
+    const saveBookingDeferred = () => {
+        try { localStorage.setItem('assistant_booking_deferred_v1', JSON.stringify(bookingDeferred)); } catch (e) {}
+    };
+    const saveTourGuideUnlocked = () => {
+        try { localStorage.setItem('assistant_tour_guide_unlocked_v1', JSON.stringify(tourGuideUnlocked)); } catch (e) {}
+    };
+    function isPlanLocked(planKey = getPlanKey()) {
+        return !!planLocks[planKey];
+    }
+    function isTourGuideUnlocked(planKey = getPlanKey()) {
+        return !!tourGuideUnlocked[planKey];
+    }
+    function setTourGuideUnlocked(planKey, unlocked) {
+        if (!planKey) return;
+        if (unlocked) tourGuideUnlocked[planKey] = true;
+        else delete tourGuideUnlocked[planKey];
+        saveTourGuideUnlocked();
+    }
+    function isTourGuideActive(planKey = getPlanKey()) {
+        return !!userProfile.tourGuide && isTourGuideUnlocked(planKey);
+    }
+    function getAllBookedActivities() {
+        if (!currentItinerary || !currentItinerary.length) return [];
+        const list = [];
+        currentItinerary.forEach((day, idx) => {
+            (day || []).forEach(act => {
+                if (act.requiresBooking && isBooked(idx + 1, act.id)) {
+                    list.push({ ...act, dayNumber: idx + 1 });
+                }
+            });
+        });
+        return list;
+    }
     let confirmedDays = {};
     let changeHistory = window.changeHistory || {};
     let assistantLastChangedActivityId = null;
@@ -214,13 +278,24 @@ import './state.js';
         return outdoorHints.some(h => cat.includes(h) || tag.includes(h) || details.includes(h));
     }
 
+    /* ---------- WEATHER (Open-Meteo + fallback) ---------- */
+    function prefetchWeatherForTripDates(dates, coords = DEFAULT_CITY_COORDS) {
+        if (!Array.isArray(dates) || !dates.length) return;
+        prefetchWeatherForTripDatesBase(dates, coords).then(() => {
+            try {
+                renderItineraryUI(currentItinerary, tripDates || []);
+                renderAssistantInline();
+            } catch (e) {}
+        });
+    }
+
     function buildChatContext(dayNumber, activity, status, timingNote, arrivalIso) {
         const stops = getDayStopsWithStatus(dayNumber);
         const nextStop = getNextStopFromContext(dayNumber, activity ? activity.id : null);
         const completedTitles = stops.filter(s => s.completed).map(s => s.title);
         const dayDate = tripDates && tripDates[dayNumber - 1] ? new Date(tripDates[dayNumber - 1]) : new Date();
-        const weather = simulateWeather(dayDate);
-        const weatherDesc = `${weather.desc} ${weather.temp}`.replace(/AøC/g, '°C');
+        const weather = getWeatherSnapshotSync(dayDate);
+        const weatherDesc = `${weather.desc} ${toPlainTemp(weather.temp)}`.trim();
         return {
             status,
             dayNumber,
@@ -250,7 +325,10 @@ import './state.js';
     /* ---------- ASSISTANT & CHAT (AI toggle gated) ---------- */
     function updateAiUiVisibility() {
         const bar = document.getElementById('assistantBar');
-        if (bar) bar.style.display = 'flex';
+        const chatBtn = document.getElementById('headerChatBtn');
+        const shouldShow = isTourGuideActive();
+        if (bar) bar.style.display = shouldShow ? 'flex' : 'none';
+        if (chatBtn) chatBtn.style.display = shouldShow ? 'inline-flex' : 'none';
     }
 
     function showAssistant(messageHtml = 'Assistant is standing by.') {
@@ -280,7 +358,7 @@ import './state.js';
     }
 
     function renderAssistantState(context = {}) {
-        if (!userProfile.tourGuide) return;
+        if (!isTourGuideActive()) return;
         const drawer = document.getElementById('assistantDrawer');
         const content = document.getElementById('assistantContent');
         const actions = document.getElementById('assistantActions');
@@ -471,6 +549,10 @@ import './state.js';
             showToast('Generate an itinerary first.', 'info');
             return;
         }
+        if (!isTourGuideActive()) {
+            showToast('Confirm bookings (or book later) to start Tour Guide chat.', 'info');
+            return;
+        }
         if (modal) {
             openChatModal();
             const input = document.getElementById('chatInput');
@@ -526,6 +608,11 @@ function writeBackDayActivities(activities) {
 
     function setAssistantMode(mode) {
         if (!ALLOWED_ASSISTANT_STATES.has(mode)) return;
+        if (isPlanLocked() && mode !== ASSISTANT_STATES.TOUR_GUIDE_READY && mode !== ASSISTANT_STATES.BOOKING_ALERT) {
+            assistantMode = ASSISTANT_STATES.TOUR_GUIDE_READY;
+            renderAssistantInline();
+            return;
+        }
         assistantMode = mode;
         if (mode !== ASSISTANT_STATES.REFINEMENT_CHAT && mode !== ASSISTANT_STATES.REFINEMENT_POST_CHANGE) {
             assistantSelectedActivity = null;
@@ -555,6 +642,11 @@ function writeBackDayActivities(activities) {
 
     function confirmDayPlan() {
         if (!currentItinerary || !currentItinerary.length) {
+            renderAssistantInline();
+            return;
+        }
+        if (isPlanLocked()) {
+            assistantMode = ASSISTANT_STATES.TOUR_GUIDE_READY;
             renderAssistantInline();
             return;
         }
@@ -612,20 +704,20 @@ function writeBackDayActivities(activities) {
 
         switch (assistantMode) {
             case ASSISTANT_STATES.REFINEMENT_INITIAL: {
-                if (questionTitle) questionTitle.textContent = 'Would you like to make any changes?';
+                if (questionTitle) questionTitle.textContent = 'Do you want to change your plan?';
                 if (questionSub) {
-                    questionSub.textContent = 'You can change the days/activities or keep & confirm when ready.';
+                    questionSub.textContent = 'You can change days/activities, or confirm the plan when you are ready.';
                 }
                 if (questionActions) {
                     questionActions.innerHTML = `
-                        <button class="assistant-chip" onclick="setAssistantMode('${ASSISTANT_STATES.REFINEMENT_PICK_ACTIVITY}')">I want to make a change</button>
-                        <button class="assistant-chip" onclick="confirmDayPlan()">Keep & Confirm the plan</button>
+                        <button class="assistant-chip" onclick="setAssistantMode('${ASSISTANT_STATES.REFINEMENT_PICK_ACTIVITY}')">I want to make changes</button>
+                        <button class="assistant-chip" onclick="confirmDayPlan()">Confirm the plan</button>
                     `;
                 }
                 break;
             }
             case ASSISTANT_STATES.REFINEMENT_PICK_ACTIVITY: {
-                if (questionTitle) questionTitle.textContent = 'Please choose an activity to make changes.';
+                if (questionTitle) questionTitle.textContent = 'Pick an activity to change.';
                 if (questionSub) questionSub.textContent = '';
                 if (questionActions) questionActions.innerHTML = '';
                 activityPrompt.style.display = 'block';
@@ -642,7 +734,7 @@ function writeBackDayActivities(activities) {
                     if (chatInputRow) chatInputRow.style.display = 'none';
                 } else {
                     chatPrompt.textContent = assistantSelectedActivity
-                        ? `Describe the changes you want to make for "${assistantSelectedActivity.title}" in a few words.`
+                        ? `What change do you want for "${assistantSelectedActivity.title}"? (you can mention day/time/place)`
                         : 'Select an activity to change.';
                     if (saveActions) saveActions.style.display = 'none';
                     if (chatInputRow) chatInputRow.style.display = 'grid';
@@ -651,13 +743,13 @@ function writeBackDayActivities(activities) {
             }
             case ASSISTANT_STATES.REFINEMENT_POST_CHANGE: {
                 chat.style.display = 'block';
-                chatPrompt.textContent = 'Changes are made. Keep & Confirm, continue, discard, or save?';
-                if (questionTitle) questionTitle.textContent = 'Changes made';
+                chatPrompt.textContent = 'Change applied. Confirm, continue editing, discard, or save.';
+                if (questionTitle) questionTitle.textContent = 'Change applied';
                 if (questionSub) questionSub.textContent = assistantLastChangeMessage || '';
                 if (questionActions) {
                     questionActions.innerHTML = `
-                        <button class="assistant-chip" onclick="confirmAndFinalizeDay()">Keep & Confirm the plan</button>
-                        <button class="assistant-chip" onclick="resumeAssistantChanges()">Continue Making Changes</button>
+                        <button class="assistant-chip" onclick="confirmAndFinalizeDay()">Confirm the plan</button>
+                        <button class="assistant-chip" onclick="resumeAssistantChanges()">Continue making changes</button>
                         <button class="assistant-chip" onclick="confirmAssistantSave(false)">Discard</button>
                         <button class="assistant-chip" onclick="confirmAssistantSave(true)">Save</button>
                     `;
@@ -667,23 +759,73 @@ function writeBackDayActivities(activities) {
             case ASSISTANT_STATES.BOOKING_ALERT: {
                 booking.style.display = 'block';
                 renderBookingList();
-                if (questionTitle) questionTitle.textContent = 'Caution: bookings needed';
-                if (questionSub) questionSub.textContent = outstanding.length ? `Pending: ${outstanding.map(o => `Day ${o.dayNumber}: ${o.title}`).join(', ')}` : '';
-                if (questionActions) questionActions.innerHTML = '';
+                if (questionTitle) questionTitle.textContent = 'Booking check';
+                if (questionSub) {
+                    questionSub.textContent = outstanding.length
+                        ? 'These places require booking. If you have booked them, mark as "Booked" and then confirm.'
+                        : 'No booking-required places remain.';
+                }
+                if (questionActions) {
+                    questionActions.innerHTML = `
+                        <button class="assistant-chip" onclick="confirmBookingStatuses()">Confirm booking status</button>
+                        <button class="assistant-chip" onclick="deferBookingsAndStartTour()">I will book later, continue</button>
+                        <button class="assistant-chip" onclick="backToPlanEditing()">Back to editing</button>
+                    `;
+                }
+                break;
+            }
+            case ASSISTANT_STATES.BOOKING_CONFIRM: {
+                if (questionTitle) questionTitle.textContent = 'Confirm bookings';
+                const bookedList = assistantBookingSummary?.booked || getAllBookedActivities();
+                const pendingList = assistantBookingSummary?.pending || getAllOutstandingBookings();
+                if (questionSub) {
+                    const bookedText = bookedList.length ? bookedList.map(b => `Day ${b.dayNumber}: ${b.title}`).join(', ') : 'none';
+                    const pendingText = pendingList.length ? pendingList.map(p => `Day ${p.dayNumber}: ${p.title}`).join(', ') : 'none';
+                    questionSub.textContent = `Booked: ${bookedText}. Pending: ${pendingText}. Booked items will lock the plan. Do you confirm?`;
+                }
+                if (questionActions) {
+                    questionActions.innerHTML = `
+                        <button class="assistant-chip" onclick="finalizeBookingConfirmation(true)">Yes, confirm</button>
+                        <button class="assistant-chip" onclick="setAssistantMode('${ASSISTANT_STATES.BOOKING_ALERT}')">No, I want to adjust</button>
+                    `;
+                }
+                break;
+            }
+            case ASSISTANT_STATES.BOOKING_DEFER: {
+                if (questionTitle) questionTitle.textContent = 'No bookings yet';
+                if (questionSub) questionSub.textContent = 'You have not booked anything yet. Do you want to continue with this plan? (The plan will not be locked.)';
+                if (questionActions) {
+                    questionActions.innerHTML = `
+                        <button class="assistant-chip" onclick="deferBookingsAndStartTour(true)">Yes, continue</button>
+                        <button class="assistant-chip" onclick="backToPlanEditing()">No, keep editing</button>
+                    `;
+                }
                 break;
             }
             case ASSISTANT_STATES.TOUR_GUIDE_READY: {
                 const today = getActiveDayActivities();
                 const agenda = today.map(a => `${a.time || 'TBD'} - ${a.title}`).join('<br>');
                 const dayDate = tripDates && tripDates[activeDayIndex] ? tripDates[activeDayIndex] : null;
-                const weather = dayDate ? simulateWeather(dayDate) : { icon: '☁️', temp: '', desc: '' };
-                if (questionTitle) questionTitle.textContent = 'Ready for the Chicago trip!';
-                if (questionSub) questionSub.innerHTML = `AI Tour Guide is ready. Long-press "Arrived" or "Completed" for 2s to send a signal.<br>${weather.icon || ''} ${weather.temp || ''} ${weather.desc || ''}<br>${agenda}`;
+                const weather = dayDate ? getWeatherSnapshotSync(dayDate) : getWeatherSnapshotSync(new Date());
+                if (questionTitle) questionTitle.textContent = 'Tour guide is ready!';
+                const deferred = !!bookingDeferred[planKey];
+                const reminder = (outstanding.length && deferred)
+                    ? `<div style="margin-top:6px; padding:6px 8px; border:1px solid rgba(234,179,8,0.5); border-radius:8px; background:rgba(234,179,8,0.08); color:var(--accent-gold); font-size:0.85rem;">Bookings pending (${outstanding.length}). You can complete them anytime.</div>`
+                    : '';
+                const tourGuideOn = isTourGuideActive();
+                const intro = tourGuideOn
+                    ? `AI Tour Guide is ready. Long-press "Arrived" or "Completed" for 2s to send a signal.`
+                    : `Confirm booking status (or choose "I'll book later") to start Tour Guide check-ins.`;
+                if (questionSub) questionSub.innerHTML = `${intro}<br>${weather.icon || ''} ${weather.temp || ''} ${weather.desc || ''}<br>${agenda}${reminder}`;
                 if (questionActions) {
+                    const bookingBtn = outstanding.length && (deferred || isPlanLocked())
+                        ? `<button class="assistant-chip" onclick="setAssistantMode('${ASSISTANT_STATES.BOOKING_ALERT}')">Review bookings</button>`
+                        : '';
                     questionActions.innerHTML = `
+                        ${bookingBtn}
                         <button class="assistant-chip" onclick="openChatModal()">Help</button>
-                        <button class="assistant-chip" onclick="skipNextStop(this)">Skip next</button>
-                        <button class="assistant-chip" onclick="moveNextToTomorrow(this)">Delay next</button>
+                        <button class="assistant-chip" onclick="skipNextStop(this)">Skip next stop</button>
+                        <button class="assistant-chip" onclick="moveNextToTomorrow(this)">Delay next stop</button>
                     `;
                 }
                 break;
@@ -693,9 +835,6 @@ function writeBackDayActivities(activities) {
         // Auto-transition only between booking alert and ready when bookings change
         if (!assistantPendingSave && assistantMode === ASSISTANT_STATES.BOOKING_ALERT && outstanding.length === 0) {
             assistantMode = ASSISTANT_STATES.TOUR_GUIDE_READY;
-            renderAssistantInline();
-        } else if (!assistantPendingSave && assistantMode === ASSISTANT_STATES.TOUR_GUIDE_READY && outstanding.length > 0) {
-            assistantMode = ASSISTANT_STATES.BOOKING_ALERT;
             renderAssistantInline();
         }
     }
@@ -728,7 +867,19 @@ function populateAssistantActivities() {
         const bookingSection = document.getElementById('assistantBookingPrompt');
         if (!bookingList) return;
         bookingList.innerHTML = '';
-        const activities = getAllOutstandingBookings();
+        if (!currentItinerary || !currentItinerary.length) {
+            bookingList.innerHTML = '<div style="color:var(--secondary-text); font-size:0.88rem;">No plan found.</div>';
+            if (bookingSection) bookingSection.style.display = 'none';
+            return;
+        }
+        const planKey = getPlanKey();
+        const locked = isPlanLocked(planKey);
+        const activities = [];
+        currentItinerary.forEach((day, idx) => {
+            (day || []).forEach(act => {
+                if (act.requiresBooking) activities.push({ ...act, dayNumber: idx + 1 });
+            });
+        });
         if (!activities.length) {
             bookingList.innerHTML = '<div style="color:var(--secondary-text); font-size:0.88rem;">No activities require booking.</div>';
             if (bookingSection) bookingSection.style.display = 'none';
@@ -744,14 +895,81 @@ function populateAssistantActivities() {
             link.rel = 'noopener noreferrer';
             link.textContent = `Day ${act.dayNumber}: ${act.title}`;
             item.appendChild(link);
-            const btn = document.createElement('button');
-            btn.className = 'assistant-chip';
-            btn.style.marginLeft = '8px';
-            btn.textContent = 'Mark booked';
-            btn.onclick = () => toggleBooking(act.dayNumber, act.id);
-            item.appendChild(btn);
+            const status = document.createElement('span');
+            status.className = 'assistant-booking-status';
+            const booked = isBooked(act.dayNumber, act.id);
+            status.textContent = booked ? 'Booked' : 'Booking needed';
+            item.appendChild(status);
+            if (!booked && !locked) {
+                const btn = document.createElement('button');
+                btn.className = 'assistant-chip';
+                btn.style.marginLeft = '8px';
+                btn.textContent = 'Mark booked';
+                btn.onclick = () => toggleBooking(act.dayNumber, act.id);
+                item.appendChild(btn);
+            }
             bookingList.appendChild(item);
         });
+    }
+
+    function confirmBookingStatuses() {
+        const booked = getAllBookedActivities();
+        const pending = getAllOutstandingBookings();
+        assistantBookingSummary = { booked, pending };
+        if (booked.length > 0) {
+            assistantMode = ASSISTANT_STATES.BOOKING_CONFIRM;
+        } else {
+            assistantMode = ASSISTANT_STATES.BOOKING_DEFER;
+        }
+        renderAssistantInline();
+    }
+
+    function finalizeBookingConfirmation(accept) {
+        if (!accept) {
+            assistantMode = ASSISTANT_STATES.BOOKING_ALERT;
+            renderAssistantInline();
+            return;
+        }
+        const planKey = getPlanKey();
+        const booked = getAllBookedActivities();
+        setTourGuideUnlocked(planKey, true);
+        userProfile.tourGuide = true;
+        userPreferences.tourGuide = true;
+        saveProfile(userProfile);
+        updateAiUiVisibility();
+        if (booked.length) {
+            planLocks[planKey] = { lockedAt: Date.now() };
+            savePlanLocks();
+            bookingDeferred[planKey] = false;
+            saveBookingDeferred();
+            showToast('Booked stops are now locked. The plan cannot be edited.', 'success');
+        }
+        assistantMode = ASSISTANT_STATES.TOUR_GUIDE_READY;
+        renderItineraryUI(currentItinerary, tripDates || []);
+        renderAssistantInline();
+    }
+
+    function deferBookingsAndStartTour(fromDeferScreen = false) {
+        const planKey = getPlanKey();
+        bookingDeferred[planKey] = true;
+        saveBookingDeferred();
+        setTourGuideUnlocked(planKey, true);
+        userProfile.tourGuide = true;
+        userPreferences.tourGuide = true;
+        saveProfile(userProfile);
+        updateAiUiVisibility();
+        assistantMode = ASSISTANT_STATES.TOUR_GUIDE_READY;
+        renderItineraryUI(currentItinerary, tripDates || []);
+        renderAssistantInline();
+    }
+
+    function backToPlanEditing() {
+        if (isPlanLocked()) {
+            assistantMode = ASSISTANT_STATES.TOUR_GUIDE_READY;
+        } else {
+            assistantMode = ASSISTANT_STATES.REFINEMENT_PICK_ACTIVITY;
+        }
+        renderAssistantInline();
     }
 
     function submitChangeRequest() {
@@ -915,6 +1133,9 @@ function populateAssistantActivities() {
     }
 
     function applyChangeCommand(text, activity) {
+        if (isPlanLocked()) {
+            return { changed: false, message: 'The plan is locked. A booked plan cannot be modified.' };
+        }
         if (!activity) return { changed: false, message: 'No activity selected.' };
         let structured = null;
         if (typeof text === 'object' && text !== null) {
@@ -1223,15 +1444,111 @@ function populateAssistantActivities() {
     }
 
     function suggestNearbyFood(el) {
+        suggestNearby('food', el);
+    }
+
+    async function suggestNearbyAt(lat, lng, kind, el) {
         if (!currentItinerary || !currentItinerary.length) { showToast('No itinerary yet.', 'info'); return; }
-        const all = currentItinerary.flat();
-        const food = all.find(a => (a.category || '').toLowerCase().includes('food')) || all[0];
-        if (food) {
-            const msg = `<strong>Try nearby:</strong> ${food.title} (${food.category || ''}). Ask for more options in chat.`;
-            showAssistant(msg);
+        if (!lat || !lng) { showToast('No map coordinates available.', 'info'); return; }
+        showToast('Searching nearby places...', 'info');
+        try {
+            const places = await fetchNearbyPlaces(lat, lng, kind, 5, 900);
+            if (!places.length) {
+                showAssistant('<strong>No nearby places found.</strong>');
+                return;
+            }
+            const titleMap = { food: 'Food & drinks', coffee: 'Coffee', museum: 'Museums', attraction: 'Attractions' };
+            const title = titleMap[kind] || 'Nearby';
+            const lines = places.map(p => {
+                const dist = `${Math.max(0.1, p.distanceKm).toFixed(1)} km`;
+                const status = p.openStatus === 'open' ? 'Open now' : (p.openStatus === 'closed' ? 'Closed' : 'Hours unknown');
+                const maps = buildGoogleMapsSearchUrl(p.name, p.lat, p.lng);
+                const addr = p.address ? ` • ${p.address}` : '';
+                return `<div style="margin:6px 0;"><strong><a href="${maps}" target="_blank" rel="noopener noreferrer" style="color:var(--accent-cyan); text-decoration:none;">${p.name}</a></strong><br><span style="color:var(--secondary-text); font-size:0.85rem;">${dist} • ${status}${addr}</span></div>`;
+            }).join('');
+            showAssistant(`<strong>Nearby ${title}:</strong>${lines}`);
             renderAssistantState(buildAssistantContext());
             flashChip(el);
+        } catch (e) {
+            console.error(e);
+            showToast(e.message || 'Nearby search failed.', 'error');
         }
+    }
+
+    async function suggestNearby(kind, el) {
+        const day = getActiveDayActivities();
+        const center = day.find(a => a.lat && a.lng) || currentItinerary.flat().find(a => a.lat && a.lng) || LOOP_COORDS;
+        await suggestNearbyAt(center.lat, center.lng, kind, el);
+    }
+
+    async function hydratePlaceMetaForActivity(dayNumber, activityId) {
+        const metaEl = document.getElementById(`place-meta-${dayNumber}-${activityId}`);
+        if (!metaEl) return;
+        const day = currentItinerary?.[dayNumber - 1] || [];
+        const activity = day.find(a => String(a.id) === String(activityId));
+        if (!activity || !activity.lat || !activity.lng) {
+            metaEl.innerHTML = '<div style="color:var(--secondary-text); font-size:0.85rem;">No coordinates for place details.</div>';
+            return;
+        }
+        if (activity._osmMeta && activity._osmMeta.loaded) {
+            metaEl.innerHTML = activity._osmMeta.html;
+            return;
+        }
+        metaEl.innerHTML = '<div style="color:var(--secondary-text); font-size:0.85rem;">Loading place info...</div>';
+        try {
+            const meta = await fetchPlaceMetaByName(activity.lat, activity.lng, activity.title);
+            if (!meta) {
+                metaEl.innerHTML = '<div style="color:var(--secondary-text); font-size:0.85rem;">No place details found in OpenStreetMap.</div>';
+                activity._osmMeta = { loaded: true, html: metaEl.innerHTML };
+                return;
+            }
+            const openLabel = meta.openStatus === 'open' ? 'Open now' : (meta.openStatus === 'closed' ? 'Closed now' : 'Hours unknown');
+            const hours = meta.openingHours ? `<div><strong>Hours:</strong> <span style="color:var(--secondary-text);">${meta.openingHours}</span></div>` : '';
+            const phone = meta.phone ? `<div><strong>Phone:</strong> <span style="color:var(--secondary-text);">${meta.phone}</span></div>` : '';
+            const safeWebsite = meta.website
+                ? (String(meta.website).startsWith('http://') || String(meta.website).startsWith('https://') ? String(meta.website) : `https://${String(meta.website)}`)
+                : '';
+            const website = safeWebsite ? `<div><strong>Website:</strong> <a href="${safeWebsite}" target="_blank" rel="noopener noreferrer" style="color:var(--accent-cyan); text-decoration:none;">${safeWebsite.replace(/^https?:\/\//, '')}</a></div>` : '';
+            const address = meta.address ? `<div><strong>Address:</strong> <span style="color:var(--secondary-text);">${meta.address}</span></div>` : '';
+            const mapsUrl = buildGoogleMapsSearchUrl(meta.name, meta.lat, meta.lng);
+            metaEl.innerHTML = `
+                <div style="margin-top:10px; padding-top:10px; border-top:1px dashed rgba(255,255,255,0.12);">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                        <div style="font-weight:700;">Place info</div>
+                        <a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" class="action-btn btn-maps" style="padding:8px 10px; font-size:0.85rem;">
+                            <i class="fa-solid fa-location-dot"></i> Map
+                        </a>
+                    </div>
+                    <div style="margin-top:6px; color:${meta.openStatus === 'open' ? 'var(--success)' : (meta.openStatus === 'closed' ? 'var(--danger)' : 'var(--secondary-text)')}; font-weight:700;">
+                        ${openLabel}
+                    </div>
+                    ${hours}
+                    ${address}
+                    ${phone}
+                    ${website}
+                    <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+                        <button type="button" class="assistant-chip" onclick="event.stopPropagation(); suggestNearbyFromActivity(${dayNumber}, ${activityId}, 'coffee')">Coffee</button>
+                        <button type="button" class="assistant-chip" onclick="event.stopPropagation(); suggestNearbyFromActivity(${dayNumber}, ${activityId}, 'food')">Food</button>
+                        <button type="button" class="assistant-chip" onclick="event.stopPropagation(); suggestNearbyFromActivity(${dayNumber}, ${activityId}, 'museum')">Museums</button>
+                    </div>
+                </div>
+            `;
+            activity._osmMeta = { loaded: true, html: metaEl.innerHTML, meta };
+        } catch (e) {
+            console.error(e);
+            metaEl.innerHTML = '<div style="color:var(--danger); font-size:0.85rem;">Could not load place details.</div>';
+        }
+    }
+
+    async function suggestNearbyFromActivity(dayNumber, activityId, kind) {
+        if (!currentItinerary || !currentItinerary.length) return;
+        const day = currentItinerary?.[dayNumber - 1] || [];
+        const activity = day.find(a => String(a.id) === String(activityId));
+        if (!activity || !activity.lat || !activity.lng) {
+            showToast('No coordinates for nearby search.', 'info');
+            return;
+        }
+        await suggestNearbyAt(activity.lat, activity.lng, kind, null);
     }
 
     function summarizeToday(el) {
@@ -1467,6 +1784,7 @@ function populateAssistantActivities() {
             currentItinerary = savedItinerary;
             const dates = getDaysArray(new Date(userProfile.startDate), new Date(userProfile.endDate));
             renderItineraryUI(savedItinerary, dates);
+            prefetchWeatherForTripDates(dates);
             showOnlySection('results');
         } else if (currentIndex > 0 && currentIndex < experiences.length) {
             showOnlySection('swiper');
@@ -1479,8 +1797,50 @@ function populateAssistantActivities() {
         openPlannerTab();
     }
 
-    function goToPlannerStart() {
+    function clearSavedPlanData() {
+        try { localStorage.removeItem(STORAGE_KEYS.itinerary); } catch (e) {}
+        try { localStorage.removeItem('planner_checkins_v1'); } catch (e) {}
+        try { localStorage.removeItem('planner_bookings_v1'); } catch (e) {}
+        try { localStorage.removeItem('assistant_plan_locks_v1'); } catch (e) {}
+        try { localStorage.removeItem('assistant_booking_deferred_v1'); } catch (e) {}
+        try { localStorage.removeItem('assistant_tour_guide_unlocked_v1'); } catch (e) {}
+        try { localStorage.removeItem('assistant_confirmed_days_v1'); } catch (e) {}
+        try { localStorage.removeItem('planner_change_history_v1'); } catch (e) {}
+
+        checkins = {};
+        bookings = {};
+        planLocks = {};
+        bookingDeferred = {};
+        tourGuideUnlocked = {};
+        confirmedDays = {};
+        changeHistory = {};
+        assistantBookingSummary = null;
+        lastAiContext = null;
+
+        window.changeHistory = changeHistory;
+    }
+
+    function startNewPlan() {
+        closeHeaderActionsMenu();
+        clearSavedPlanData();
+
+        userProfile.startDate = null;
+        userProfile.endDate = null;
+        saveProfile(userProfile);
+
         clearPlannerState();
+        assistantMode = ASSISTANT_STATES.REFINEMENT_INITIAL;
+        assistantSelectedActivity = null;
+        assistantPendingSave = false;
+        assistantLastChangeMessage = '';
+        assistantLastSnapshot = null;
+        activeDayIndex = 0;
+        currentDayMapData = { dayNumber: 1, activities: [] };
+        resetAssistant();
+    }
+
+    function goToPlannerStart() {
+        startNewPlan();
         showOnlySection('intro');
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -1577,8 +1937,15 @@ function populateAssistantActivities() {
         if (cardStack) cardStack.innerHTML = '';
         const itineraryContent = document.getElementById('itineraryContent');
         if (itineraryContent) itineraryContent.innerHTML = '';
+        const dayTabs = document.getElementById('dayTabs');
+        if (dayTabs) dayTabs.innerHTML = '';
+        const daySummary = document.getElementById('daySummary');
+        if (daySummary) daySummary.innerHTML = '';
+        const viewDayMapBtn = document.getElementById('viewDayMapBtn');
+        if (viewDayMapBtn) viewDayMapBtn.style.display = 'none';
         updateStartButtonState();
         currentItinerary = null;
+        tripDates = [];
         updateHeaderActionsVisibility();
     }
 
@@ -1907,8 +2274,8 @@ function populateAssistantActivities() {
 
     function startHold(action, dayNumber, activityId, btn, evt) {
         if (evt) evt.stopPropagation();
-        if (!userProfile.tourGuide) {
-            showToast('Turn on AI Tour Guide to send signals.', 'info');
+        if (!isTourGuideActive()) {
+            showToast('Confirm bookings (or book later) to use check-ins.', 'info');
             return;
         }
         if (!btn) return;
@@ -1958,7 +2325,7 @@ function populateAssistantActivities() {
         const arrivalIso = now.toISOString();
         lastAiContext = buildChatContext(dayNumber, activity, 'arrived', timingNote, arrivalIso);
 
-        if (userProfile.tourGuide) {
+        if (isTourGuideActive()) {
             const nextStop = getNextStopFromContext(dayNumber, activity.id);
             const detail = activity.details ? `What to do: ${activity.details}` : '';
             const insta = activity.insta ? `Tip: ${activity.insta}` : '';
@@ -2003,7 +2370,7 @@ function populateAssistantActivities() {
         // store context for AI chat
         lastAiContext = buildChatContext(dayNumber, activity, 'completed', null, null);
 
-        if (userProfile.tourGuide) {
+        if (isTourGuideActive()) {
             showAssistant(`<strong>Completed:</strong> ${activity.title}<br><div style="margin-top:6px;">Logged. Want me to adjust timing or suggest what's next?</div>`);
             renderAssistantState(buildAssistantContext());
         } else {
@@ -2022,6 +2389,10 @@ function populateAssistantActivities() {
 
     function toggleBooking(dayNumber, activityId, evt) {
         if (evt) evt.stopPropagation();
+        if (isPlanLocked()) {
+            showToast('The plan is locked. Booking status cannot be changed.', 'info');
+            return;
+        }
         const key = `${dayNumber}-${activityId}`;
         const wasBooked = !!bookings[key] && bookings[key].planKey === getPlanKey();
         if (wasBooked) {
@@ -2055,8 +2426,6 @@ function populateAssistantActivities() {
         } else {
             showToast(wasBooked ? 'Booking removed.' : 'Marked as booked.', 'success');
         }
-        const remaining = getAllOutstandingBookings();
-        assistantMode = remaining.length === 0 ? ASSISTANT_STATES.TOUR_GUIDE_READY : ASSISTANT_STATES.BOOKING_ALERT;
         renderBookingList();
         renderItineraryUI(currentItinerary, tripDates || []);
         renderAssistantInline();
@@ -2149,7 +2518,7 @@ function populateAssistantActivities() {
     }
 
     /* ---------- DATE PICKER ---------- */
-    const datePicker = flatpickr("#dateRange", { 
+    const datePicker = (typeof flatpickr === 'function') ? flatpickr("#dateRange", { 
         mode: "range",
         dateFormat: "d-m-Y",
         minDate: "today",
@@ -2166,7 +2535,7 @@ function populateAssistantActivities() {
             }
             updateStartButtonState();
         } 
-    });
+    }) : null;
 
     function hydratePlannerInputsFromProfile() {
         if (userProfile.startDate && userProfile.endDate && datePicker) {
@@ -2450,6 +2819,7 @@ function populateAssistantActivities() {
         showToast('Tour guide preference updated.', 'success');
     }
 
+
     function exportUserData() {
         const payload = {
             version: 1,
@@ -2549,113 +2919,8 @@ function populateAssistantActivities() {
         return 'walk';
     }
 
-    const routeCache = {};
-
-    async function fetchRouteInfo(origin, destination) {
-        if (!origin || !destination || !origin.lat || !origin.lng || !destination.lat || !destination.lng) return null;
-        const key = `${origin.lat},${origin.lng}->${destination.lat},${destination.lng}`;
-        if (routeCache[key]) return routeCache[key];
-        const fallback = () => {
-            const distanceKm = haversineDistanceKm(origin, destination);
-            const durationMin = estimateTravelMinutes(distanceKm, getTransportMode());
-            return { distanceKm, durationMin, source: 'approx' };
-        };
-        try {
-            const url = `https://router.project-osrm.org/route/v1/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}?overview=false`;
-            const res = await fetch(url);
-            if (!res.ok) throw new Error('route fetch failed');
-            const data = await res.json();
-            const leg = data?.routes?.[0]?.legs?.[0];
-            if (!leg) throw new Error('no leg');
-            const distanceKm = Math.round((leg.distance || 0) / 10) / 100;
-            const durationMin = Math.round((leg.duration || 0) / 60);
-            routeCache[key] = { distanceKm, durationMin, source: 'live' };
-            return routeCache[key];
-        } catch (e) {
-            const approx = fallback();
-            routeCache[key] = approx;
-            return approx;
-        }
-    }
-
-    async function updateRouteChips(dayNumber) {
-        const chips = document.querySelectorAll(`.route-chip[data-day='${dayNumber}']`);
-        for (const chip of chips) {
-            const prevLat = parseFloat(chip.dataset.prevLat);
-            const prevLng = parseFloat(chip.dataset.prevLng);
-            const lat = parseFloat(chip.dataset.lat);
-            const lng = parseFloat(chip.dataset.lng);
-            const idx = parseInt(chip.dataset.idx, 10);
-            if (Number.isNaN(lat) || Number.isNaN(lng) || Number.isNaN(prevLat) || Number.isNaN(prevLng)) {
-                chip.textContent = 'Route n/a';
-                continue;
-            }
-            chip.textContent = 'Routing...';
-            const info = await fetchRouteInfo({ lat: prevLat, lng: prevLng }, { lat, lng });
-            if (!info) {
-                chip.textContent = 'Route n/a';
-                continue;
-            }
-            const distanceLabel = `${info.distanceKm.toFixed(1)} km`;
-            const durationLabel = `${info.durationMin || 0} min`;
-            chip.textContent = `${distanceLabel} • ${durationLabel}`;
-            chip.dataset.source = info.source;
-            if (currentItinerary && currentItinerary[dayNumber - 1] && currentItinerary[dayNumber - 1][idx]) {
-                currentItinerary[dayNumber - 1][idx]._lastDistance = distanceLabel;
-                currentItinerary[dayNumber - 1][idx]._lastDuration = durationLabel;
-            }
-        }
-    }
-
-    function haversineDistanceKm(a, b) {
-        if (!a || !b || !a.lat || !a.lng || !b.lat || !b.lng) return 0;
-        const toRad = (deg) => deg * (Math.PI / 180);
-        const R = 6371;
-        const dLat = toRad(b.lat - a.lat);
-        const dLng = toRad(b.lng - a.lng);
-        const lat1 = toRad(a.lat);
-        const lat2 = toRad(b.lat);
-        const sinDLat = Math.sin(dLat / 2);
-        const sinDLng = Math.sin(dLng / 2);
-        const aVal = sinDLat * sinDLat + sinDLng * sinDLng * Math.cos(lat1) * Math.cos(lat2);
-        const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
-        return R * c;
-    }
-
-    function estimateTravelMinutes(distanceKm, mode) {
-        const speeds = { walk: 4.5, rideshare: 18, private: 24 }; // km/h
-        const overhead = { walk: 4, rideshare: 8, private: 6 }; // mins for waiting/parking
-        const speed = speeds[mode] || speeds.walk;
-        const base = (distanceKm / speed) * 60;
-        return Math.max(5, Math.round(base + (overhead[mode] || 4)));
-    }
-
-    function formatMinutesToClock(totalMinutes) {
-        const normalized = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
-        const h = Math.floor(normalized / 60);
-        const m = normalized % 60;
-        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    }
-
-    function formatDurationLabel(mins) {
-        const m = Math.max(15, Math.round(mins));
-        const h = Math.floor(m / 60);
-        const rem = m % 60;
-        if (h === 0) return `${rem} min`;
-        if (rem === 0) return `${h} hr`;
-        return `${h} hr ${rem} min`;
-    }
-
-    function getDurationMinutes(activity) {
-        if (!activity) return 90;
-        if (typeof activity.durationMinutes === 'number') return Math.max(20, activity.durationMinutes);
-        const str = (activity.duration || '').toLowerCase();
-        const hrMatch = str.match(/(\d+)\s*hr/);
-        const minMatch = str.match(/(\d+)\s*min/);
-        const hrs = hrMatch ? parseInt(hrMatch[1], 10) : 0;
-        const mins = minMatch ? parseInt(minMatch[1], 10) : 0;
-        const total = hrs * 60 + mins;
-        return total || 90;
+    function updateRouteChips(dayNumber) {
+        return updateRouteChipsService({ dayNumber, getTransportMode, itinerary: currentItinerary });
     }
 
     function scoreActivityForPlan(activity, cursor, dayIdx) {
@@ -2763,6 +3028,7 @@ function populateAssistantActivities() {
         currentItinerary = itinerary;
         saveItinerary(itinerary);
         renderItineraryUI(itinerary, dates);
+        prefetchWeatherForTripDates(dates);
         renderAssistantState(buildAssistantContext());
     }
 
@@ -2802,7 +3068,7 @@ function populateAssistantActivities() {
 
             if (daySummary) {
                 const d = dates[idx];
-                const weather = simulateWeather(d);
+                const weather = getWeatherSnapshotSync(d);
                 const dateStr = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
                 daySummary.innerHTML = `
                     <div class="date">${dateStr}</div>
@@ -2833,7 +3099,7 @@ function populateAssistantActivities() {
 
         setActiveDay(0);
 
-        if (userPreferences.tourGuide && itinerary.length > 0) {
+        if (isTourGuideActive() && itinerary.length > 0) {
             showAssistant(`<strong>Day plan ready.</strong> Long-press "Arrived" or "Completed" for 2s at each stop; I'll keep you in sync, suggest nearby picks, and answer questions.`);
         }
     }
@@ -2940,31 +3206,41 @@ function populateAssistantActivities() {
     }
 
     function renderDay(dayPlan, dayNumber, date) {
-        const weather = simulateWeather(date);
+        const weather = getWeatherSnapshotSync(date);
         const dateStr = date.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
         
         let activityList = '';
         let alertBanner = '';
 
-        if (userPreferences.tourGuide && weather.desc === 'Rainy') {
+        const weatherAlertsEnabled = settingsStore?.weatherAlerts !== false;
+        const isWetWeather = (w) => {
+            const desc = String(w?.desc || '').toLowerCase();
+            if (desc.includes('rain') || desc.includes('drizzle') || desc.includes('thunder')) return true;
+            if (typeof w?.precipProb === 'number' && w.precipProb >= 50) return true;
+            return false;
+        };
+
+        if (isTourGuideActive() && weatherAlertsEnabled && isWetWeather(weather)) {
             alertBanner = `
                 <div class="weather-alert" style="background: rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.4); padding:10px; border-radius:10px; margin-bottom:8px;">
-                    <strong>Rain alert for Day ${dayNumber}.</strong>
+                    <strong>Weather alert for Day ${dayNumber}.</strong>
                     <div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">
                         <button class="assistant-chip" onclick="skipNextStop(this)">Skip next stop</button>
                         <button class="assistant-chip" onclick="moveNextToTomorrow(this)">Delay to tomorrow</button>
-                        <button class="assistant-chip" onclick="suggestNearbyFood(this)">Nearby food option</button>
+                        <button class="assistant-chip" onclick="suggestNearbyFood(this)">Nearby food</button>
+                        <button class="assistant-chip" onclick="suggestNearby('coffee', this)">Nearby coffee</button>
+                        <button class="assistant-chip" onclick="suggestNearby('museum', this)">Nearby museums</button>
                     </div>
                 </div>`;
-            showAssistant(`<strong>Rain alert for Day ${dayNumber}:</strong> Placeholder indoor suggestion message.`);
+            showAssistant(`<strong>Weather alert for Day ${dayNumber}:</strong> ${weather.desc || 'Rain'} expected. Want to swap outdoor stops for indoor options?`);
         }
 
-        if (dayPlan.length === 0) {
-            activityList = `<div style="padding: 8px 0; color: var(--secondary-text); font-style: italic; font-size:0.82rem;">
+            if (dayPlan.length === 0) {
+                activityList = `<div style="padding: 8px 0; color: var(--secondary-text); font-style: italic; font-size:0.82rem;">
                 No activities for this day. Try changing Tempo or Price sliders.
             </div>`;
         } else {
-            if (userPreferences.tourGuide) {
+            if (isTourGuideActive()) {
                 activityList += `<div style="padding: 8px 0; color: var(--success); font-style: italic; font-size:0.82rem;">
                     <i class="fa-solid fa-robot"></i> AI Tour Guide is ready. Long-press "Arrived" or "Completed" for 2s to send a signal.
                 </div>`;
@@ -2980,7 +3256,7 @@ function populateAssistantActivities() {
                     ? `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${activity.lat},${activity.lng}`
                     : mapsUrl;
                 const routeChip = hasCoords
-                    ? `<span class="route-chip" data-day="${dayNumber}" data-idx="${idx}" data-lat="${activity.lat}" data-lng="${activity.lng}" data-prev-lat="${origin.lat}" data-prev-lng="${origin.lng}" title="Distance & duration">Route…</span>`
+                    ? `<span class="route-chip" data-day="${dayNumber}" data-idx="${idx}" data-lat="${activity.lat}" data-lng="${activity.lng}" data-prev-lat="${origin.lat}" data-prev-lng="${origin.lng}" title="Distance & duration">Route...</span>`
                     : '';
                 const bookingBadge = activity.requiresBooking
                     ? `<span class="activity-badge${booked ? '' : ' pulsing-glow'}" data-book-badge="${bookingKey}" style="background:${booked ? 'rgba(22,163,74,0.15)' : 'rgba(234,179,8,0.15)'}; color:${booked ? 'var(--success)' : 'var(--accent-gold)'}; border:1px solid ${booked ? 'rgba(22,163,74,0.5)' : 'rgba(234,179,8,0.5)'};">${booked ? 'Booked' : 'Booking needed'}</span>`
@@ -2988,12 +3264,12 @@ function populateAssistantActivities() {
                 const updatedBadge = activity._recentlyUpdated
                     ? `<span class="activity-badge" style="background:rgba(59,130,246,0.15); color:var(--accent-gold); border:1px solid rgba(59,130,246,0.5);">Updated</span>`
                     : '';
-                const guideSnippet = userPreferences.tourGuide
+                const guideSnippet = isTourGuideActive()
                     ? `${weather.icon || ''} ${weather.temp || ''} ${weather.desc || ''} • Next: ${activity.time || 'TBD'} • Est. ${activity.duration || 'visit soon'}`
                     : '';
 
                 activityList += `
-                    <div class="activity-item" onclick="toggleDetails(this)">
+                    <div class="activity-item" data-day="${dayNumber}" data-activity-id="${activity.id}" onclick="toggleDetails(this)">
                         
                         <div class="activity-content-wrapper">
                             <div style="flex-grow: 1; min-width: 0;">
@@ -3005,7 +3281,7 @@ function populateAssistantActivities() {
                                     ${routeChip}
                                 </div>
                             </div>
-                            ${userPreferences.tourGuide ? `
+                            ${isTourGuideActive() ? `
                                 <div class="activity-time-group">
                                     <button class="checkin-btn" title="Arrived (long-press 2s)" 
                                         onmousedown="startHold('arrived', ${dayNumber}, ${activity.id}, this, event)" 
@@ -3036,6 +3312,7 @@ function populateAssistantActivities() {
                                 <div class="insta-tip">
                                     <i class="fa-brands fa-instagram"></i> <strong>Insta Tip:</strong> ${activity.insta || 'Look for unique angles of the skyline!'}
                                 </div>
+                                <div class="place-meta" id="place-meta-${dayNumber}-${activity.id}"></div>
                                 
                                 <div class="details-actions">
                                     <a href="${directionsUrl}" target="_blank" class="action-btn btn-maps">
@@ -3087,6 +3364,13 @@ function populateAssistantActivities() {
             }
         });
         detailBox.classList.toggle('open');
+        if (detailBox.classList.contains('open')) {
+            const dayNumber = parseInt(item.dataset.day, 10);
+            const activityId = parseInt(item.dataset.activityId, 10);
+            if (!Number.isNaN(dayNumber) && !Number.isNaN(activityId)) {
+                hydratePlaceMetaForActivity(dayNumber, activityId);
+            }
+        }
     }
 
     function renderAssistantPrompt() {
@@ -3192,9 +3476,9 @@ function populateAssistantActivities() {
             const dayStops = getDayStopsWithStatus(1);
             const daySchedule = buildDayScheduleDetailed(dayStops);
             const todayDate = tripDates && tripDates[0] ? new Date(tripDates[0]) : new Date();
-            const weather = simulateWeather(todayDate);
+            const weather = getWeatherSnapshotSync(todayDate);
             const profileSummary = `Tempo:${userPreferences.tempo}|Price:${userPreferences.price}|Transport:${userPreferences.transportation}|TourGuide:${userPreferences.tourGuide}|Liked:${(userProfile.likedTags || []).join(', ')}`;
-            const systemContent = `You are a concise Chicago travel planner. Suggest exactly 3 stops for today with times in format "HH:MM - Title". Use current profile ${profileSummary}. Today's weather: ${weather.desc} ${weather.temp}. Planned schedule: ${daySchedule || 'none'}. Keep each line under 50 characters.`;
+            const systemContent = `You are a concise Chicago travel planner. Suggest exactly 3 stops for today with times in format "HH:MM - Title". Use current profile ${profileSummary}. Today's weather: ${weather.desc} ${toPlainTemp(weather.temp)}. Planned schedule: ${daySchedule || 'none'}. Keep each line under 50 characters.`;
             const reply = await callAssistant([
                 { role: 'system', content: systemContent },
                 { role: 'user', content: 'Give 3 updated suggestions for today with times and one-line titles.' }
@@ -3217,8 +3501,8 @@ function populateAssistantActivities() {
     }
 
     async function sendChatPrompt(userText) {
-        if (!userProfile.tourGuide) {
-            showToast('Turn on AI Tour Guide to chat.', 'info');
+        if (!isTourGuideActive()) {
+            showToast('Confirm bookings (or book later) to start Tour Guide chat.', 'info');
             return;
         }
         const isTravelRelated = (text) => {
@@ -3229,7 +3513,7 @@ function populateAssistantActivities() {
             return travelHints.some(k => t.includes(k));
         };
         if (!isTravelRelated(userText)) {
-            appendChatBubble('I’m here to help with your Chicago trip—ask about your itinerary, days, times, places, bookings, or directions.', false);
+            appendChatBubble("I'm here to help with your Chicago trip-ask about your itinerary, days, times, places, bookings, or directions.", false);
             return;
         }
         try {
@@ -3425,7 +3709,7 @@ function populateAssistantActivities() {
     }
 
     function deleteTrip(id) {
-        if (!confirm('Silmek istediginize emin misiniz?')) return;
+        if (!confirm('Are you sure you want to delete this trip?')) return;
         const trips = loadTrips().filter(t => t.id !== id);
         saveTrips(trips);
         renderTripsOnProfile();
@@ -3568,6 +3852,10 @@ export {
     renderAssistantInline,
     populateAssistantActivities,
     renderBookingList,
+    confirmBookingStatuses,
+    finalizeBookingConfirmation,
+    deferBookingsAndStartTour,
+    backToPlanEditing,
     submitChangeRequest,
     handleChangeKeydown,
     confirmAssistantSave,
@@ -3597,6 +3885,8 @@ export {
     skipNextStop,
     moveNextToTomorrow,
     suggestNearbyFood,
+    suggestNearby,
+    suggestNearbyFromActivity,
     summarizeToday,
     populateCityOptions,
     populateCitySelect,
@@ -3707,15 +3997,3 @@ export {
     renderTripsOnProfile,
     undoLastChange
 };
-
-
-
-
-
-
-
-
-
-
-
-

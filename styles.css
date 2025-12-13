@@ -111,6 +111,28 @@
             gap: 14px;
             margin-left: auto;
         }
+        .header-chat-btn {
+            border: 1px solid rgba(148,163,184,0.6);
+            background: rgba(15,23,42,0.98);
+            color: var(--secondary-text);
+            width: 34px;
+            height: 34px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+        }
+        .header-chat-btn i {
+            font-size: 0.95rem;
+            color: var(--blueprint-blue);
+        }
+        .header-chat-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+            border-color: rgba(255,255,255,0.25);
+        }
         .header-actions { display: none !important; }
         .header-actions-compact {
             position: relative;
@@ -1497,6 +1519,10 @@
             padding-left: 18px;
         }
 
+        .place-meta {
+            margin-top: 8px;
+        }
+
         .details-actions {
             display: flex;
             gap: 8px;
@@ -1693,7 +1719,21 @@
             background: rgba(255,255,255,0.03);
             padding: 8px 12px;
             border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
         }
         .assistant-booking-item a { color: var(--primary-text); text-decoration: none; }
         .assistant-booking-item a:hover { color: var(--accent-gold); }
+        .assistant-booking-status {
+            font-size: 0.78rem;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 999px;
+            border: 1px solid rgba(148,163,184,0.4);
+            background: rgba(15,23,42,0.8);
+            color: var(--secondary-text);
+            white-space: nowrap;
+        }
         .assistant-save-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }

@@ -6,11 +6,11 @@
     <title>Chicago AI Planner | Auth + Profile + Planner</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" integrity="sha384-RkASv+6KfBMW9eknReJIJ6b3UnjKOKC5bOUaNgIY778NFbQ8MtWq9Lr/khUgqtTt" crossorigin="anonymous">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css" integrity="sha384-heUUtXw0Djj2DElfLOVPlASSWFKNL3JDY6s3FEqQD03GYyWOeophY5DsfEG40sYX" crossorigin="anonymous">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
     <link rel="icon" href="data:image/png;base64,iVBORw0KGgo=">
 
     <link rel="stylesheet" href="styles.css?v=3">
@@ -28,12 +28,14 @@
                 <button type="button" onclick="completeCurrentTrip()">Save</button>
                 <button type="button" onclick="undoLastChange()">Undo change</button>
                 <button type="button" onclick="copyItinerarySummary()">Share</button>
-                <button type="button" onclick="openAssistantChat()">Chat</button>
             </div>
         </div>
         <div class="logo" onclick="openHome()">Chicago<span>AI</span> Planner</div>
     </div>
     <div class="header-right">
+        <button class="header-chat-btn" id="headerChatBtn" onclick="openChatModal()" aria-label="Open chat" type="button" style="display:none;">
+            <i class="fa-solid fa-message"></i>
+        </button>
         <div class="profile-menu" id="profileMenu">
             <button class="profile-menu-trigger" onclick="toggleProfileDropdown(event)">
                 <span class="profile-menu-avatar" id="headerAvatar">U</span>
@@ -62,7 +64,7 @@
     
     
     <!-- HOME -->
-    <section id="home">
+    <section id="home" class="active">
         <div class="home-hero">
             <div class="hero-split">
                 <div class="hero-copy">
@@ -548,15 +550,11 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/flatpickr" integrity="sha384-5JqMv4L/Xa0hfvtF06qboNdhvuYXUku9ZrhZh3bSk8VXF0A/RuSLHpLsSV9Zqhl6" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/leaflet/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
-<script src="api.js"></script>
-<script src="storage.js"></script>
-<script src="ui.js"></script>
-<script type="module" src="main.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="api.js?v=4"></script>
+<script src="storage.js?v=4"></script>
+<script src="ui.js?v=4"></script>
+<script type="module" src="main.js?v=4"></script>
 </body>
 </html>
-
-
-
-
