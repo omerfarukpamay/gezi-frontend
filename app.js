@@ -4097,7 +4097,6 @@ function populateAssistantActivities() {
                                 <div class="activity-title">${activity.title} ${bookingBadge} ${updatedBadge}</div>
                                 <div class="activity-duration">Est. Visit: ${activity.duration || '1 hr'}</div>
                                 <div class="activity-meta-row" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:6px;">
-                                    <span class="activity-timechip">${activity.duration || '1 hr'}</span>
                                     ${routeChip}
                                 </div>
                             </div>
