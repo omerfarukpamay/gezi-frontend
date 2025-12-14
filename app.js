@@ -262,7 +262,7 @@ import {
 /* --------- DATA: 3 TEST EXPERIENCES ---------- */
     const experiences = [
         { id: 1, title: "Luxury Helicopter Tour", category: "Adventure", price: 3, img: "https://images.unsplash.com/photo-1540962351504-03099e0a754b?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "luxury", details: "A 30-minute private helicopter ride offering unmatched views of the Magnificent Mile and Lake Michigan.", insta: "Best shot is the tilt-shift view looking straight down at The Loop. Use a wide-angle lens!", time: "10:00", duration: "45 min", lat: 41.9407935, lng: -87.6443132, address: "3209 N Broadway, Chicago, IL 60657", requiresBooking: true },
-        { id: 2, title: "Deep Dish Pizza (Lou Malnati's)", category: "Food", price: 2, img: "https://images.unsplash.com/photo-1619860167683-176375037549?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "food_mid", details: "Experience authentic Chicago-style deep-dish pizza. Recommended: Buttercrust with sausage.", insta: "Get a close-up of the cheese pull before you slice the pie! Make sure the tomato sauce looks vibrant.", time: "12:30", duration: "1 hr 15 min", lat: 41.9882449, lng: -87.6554399, address: "5822 N Sheridan Rd, Chicago, IL 60660", requiresBooking: false },
+        { id: 2, title: "Deep Dish Pizza (Lou Malnati's)", category: "Food", price: 2, img: "https://images.unsplash.com/photo-1619860167683-176375037549?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "food_mid", details: "Experience authentic Chicago-style deep-dish pizza. Recommended: Buttercrust with sausage.", insta: "Get a close-up of the cheese pull before you slice the pie! Make sure the tomato sauce looks vibrant.", time: "12:30", duration: "1 hr 15 min", lat: 41.9881274, lng: -87.65572, address: "5820 N Sheridan Rd, Chicago, IL 60660", requiresBooking: false },
         { id: 3, title: "Alinea (3-Star Michelin)", category: "Fine Dining", price: 3, img: "https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "luxury_food", details: "World-renowned culinary experience. This is an evening activity requiring formal attire and advance booking.", insta: "Capture the artistic presentation of the floating dessert course. Use soft, directional lighting.", time: "19:00", duration: "3 hr", lat: 41.9161, lng: -87.6483, requiresBooking: true }
     ];
 
@@ -393,6 +393,7 @@ import {
     const ARRIVAL_DWELL_MS = 1000 * 60 * 2;
     const ARRIVAL_SNOOZE_MS = 1000 * 60 * 10;
     const ARRIVAL_PROMPT_CLEAR_METERS = 250;
+    const WISE_CURRENT_STOP_KEY = 'assistant_wise_current_stop_v1';
 
     function loadArrivalState() {
         try { return JSON.parse(localStorage.getItem(ARRIVAL_STORAGE_KEY)) || {}; } catch (e) { return {}; }
@@ -496,13 +497,30 @@ import {
         host.innerHTML = `
             <div>
                 <strong>Looks like you're at ${title}.</strong>
-                <div class="meta">Start your on-site tour with Wise? (Detected within ~${ARRIVAL_RADIUS_METERS}m for 2+ minutes.)</div>
+                <div class="meta">Start your on-site tour with Wise?</div>
             </div>
             <div class="actions">
-                <button class="assistant-chip" onclick="respondToArrivalPrompt(true, ${dayNumber}, ${activity.id})">Yes, start</button>
-                <button class="assistant-chip" style="opacity:0.9;" onclick="respondToArrivalPrompt(false, ${dayNumber}, ${activity.id})">Not yet</button>
+                <button class="assistant-chip" type="button" data-arrival-choice="yes">Yes, start</button>
+                <button class="assistant-chip" type="button" style="opacity:0.9;" data-arrival-choice="no">Not yet</button>
             </div>
         `;
+
+        const yesBtn = host.querySelector("[data-arrival-choice='yes']");
+        const noBtn = host.querySelector("[data-arrival-choice='no']");
+        if (yesBtn) {
+            yesBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                respondToArrivalPrompt(true, dayNumber, activity.id);
+            });
+        }
+        if (noBtn) {
+            noBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                respondToArrivalPrompt(false, dayNumber, activity.id);
+            });
+        }
     }
 
     function evaluateArrivalFromLocation(locationSnap) {
@@ -753,6 +771,76 @@ import {
     function resortAllDaysByTime() {
         if (!currentItinerary || !Array.isArray(currentItinerary)) return;
         currentItinerary.forEach((_, idx) => resortDayByTime(idx));
+    }
+
+    function getActiveDayWeatherSnapshot() {
+        const dayDate = tripDates && tripDates[activeDayIndex] ? tripDates[activeDayIndex] : null;
+        return dayDate ? getWeatherSnapshotSync(dayDate) : getWeatherSnapshotSync(new Date());
+    }
+
+    function getNextUnvisitedActivityForDay(dayIdx = activeDayIndex) {
+        if (!currentItinerary || !Array.isArray(currentItinerary) || !currentItinerary.length) return null;
+        const day = currentItinerary[dayIdx] || [];
+        if (!Array.isArray(day) || !day.length) return null;
+
+        const dayNumber = dayIdx + 1;
+        const sorted = sortActivitiesByTime(day);
+        const next = sorted.find(a => a && typeof a.id !== 'undefined' && !isStopArrivalConfirmed(dayNumber, a.id));
+        return next || sorted[0] || null;
+    }
+
+    function truncateSentence(text, maxLen = 120) {
+        const t = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!t) return '';
+        if (t.length <= maxLen) return t;
+        const cut = t.slice(0, maxLen);
+        const lastPeriod = cut.lastIndexOf('.');
+        if (lastPeriod > 60) return cut.slice(0, lastPeriod + 1);
+        return `${cut.trim()}…`;
+    }
+
+    function buildBringTips(activity, weather) {
+        const tips = [];
+        const title = String(activity?.title || '').toLowerCase();
+        const category = String(activity?.category || '').toLowerCase();
+        const desc = String(weather?.desc || '').toLowerCase();
+        const temp = typeof weather?.temp === 'string' ? weather.temp : '';
+
+        const isCold = temp.includes('-') || desc.includes('snow') || desc.includes('freezing');
+        const isWet = desc.includes('rain') || desc.includes('drizzle') || desc.includes('thunder');
+        const outdoor = isOutdoor(activity);
+
+        if (activity?.requiresBooking) tips.push('Booking confirmation');
+        if (category.includes('fine') || title.includes('alinea')) tips.push('Smart attire');
+        if (category.includes('food')) tips.push('ID & payment method');
+        if (outdoor) tips.push('Comfortable shoes');
+        if (outdoor && isCold) tips.push('Warm layers');
+        if (outdoor && isWet) tips.push('Umbrella or rain jacket');
+        if (!tips.length) tips.push('Phone charger');
+
+        return Array.from(new Set(tips)).slice(0, 3);
+    }
+
+    function buildNextStopBriefingHtml(activity, dayNumber, weather) {
+        if (!activity) return '';
+        const about = truncateSentence(activity.details || '', 140);
+        const bring = buildBringTips(activity, weather);
+        const bookingLine = activity.requiresBooking
+            ? (isBooked(dayNumber, activity.id) ? 'Booked' : 'Booking needed')
+            : '';
+
+        return `
+            <div style="margin-top:10px; padding:10px; border-radius:12px; border:1px solid rgba(148,163,184,0.28); background: rgba(2,6,23,0.22);">
+                <div style="font-weight:800; margin-bottom:4px;">Next stop briefing</div>
+                <div style="font-weight:700; margin-bottom:6px;">${activity.title}${activity.time ? ` · ${activity.time}` : ''}${bookingLine ? ` · <span style=\"color:var(--accent-gold)\">${bookingLine}</span>` : ''}</div>
+                ${about ? `<div style="color:var(--secondary-text); font-size:0.9rem; line-height:1.35;">${about}</div>` : ''}
+                ${bring && bring.length ? `
+                    <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px;">
+                        ${bring.map(t => `<span class="activity-timechip">${t}</span>`).join('')}
+                    </div>
+                ` : ''}
+            </div>
+        `;
     }
     const durationToMinutes = (str) => {
         if (!str) return 60;
@@ -1376,31 +1464,19 @@ function writeBackDayActivities(activities) {
                 break;
             }
             case ASSISTANT_STATES.TOUR_GUIDE_READY: {
-                if (questionTitle) questionTitle.textContent = 'Tour guide is ready!';
+                if (questionTitle) questionTitle.textContent = ' ';
                 const deferred = !!bookingDeferred[planKey];
                 const reminder = (outstanding.length && deferred)
                     ? `<div style="margin-top:6px; padding:6px 8px; border:1px solid rgba(234,179,8,0.5); border-radius:8px; background:rgba(234,179,8,0.08); color:var(--accent-gold); font-size:0.85rem;">Bookings pending (${outstanding.length}). You can complete them anytime.</div>`
                     : '';
                 const tourGuideOn = isTourGuideActive();
-                const next = (() => {
-                    const day = getActiveDayActivities();
-                    if (!day || !day.length) return null;
-                    const sorted = sortActivitiesByTime(day);
-                    return sorted[0] || null;
-                })();
+                const next = getNextUnvisitedActivityForDay(activeDayIndex);
+                const dayNumber = activeDayIndex + 1;
+                const weather = getActiveDayWeatherSnapshot();
 
-                const locEnabled = !!settingsStore?.locationEnabled;
-                const nextLine = next
-                    ? `Next: ${next.title}${next.time ? ` · ${next.time}` : ''}`
-                    : 'Next: Not set yet';
-
-                const line2 = locEnabled
-                    ? 'I’ll prompt you when you’re near your next stop.'
-                    : 'Enable location for live ETA and arrival prompts.';
-
-                const intro = tourGuideOn ? 'Tour Guide is active.' : `Confirm booking status (or choose "I'll book later") to start Wise.`;
                 if (questionSub) {
-                    questionSub.innerHTML = `${intro}<div style="margin-top:6px;">${line2}</div><div style="margin-top:8px; font-weight:700;">${nextLine}</div>${reminder}`;
+                    const briefing = next ? buildNextStopBriefingHtml(next, dayNumber, weather) : '';
+                    questionSub.innerHTML = `${reminder}${briefing}`;
                 }
                 if (questionActions) {
                     const bookingBtn = outstanding.length && (deferred || isPlanLocked())
@@ -1415,7 +1491,7 @@ function writeBackDayActivities(activities) {
                 break;
             }
             case ASSISTANT_STATES.TRANSIT_INFO: {
-                if (questionTitle) questionTitle.textContent = 'Transit options';
+                if (questionTitle) questionTitle.textContent = '';
                 if (questionSub) questionSub.textContent = '';
                 if (questionActions) questionActions.innerHTML = '';
                 if (insights) insights.style.display = 'block';
@@ -2052,9 +2128,26 @@ function populateAssistantActivities() {
         const activity = day ? day.find(a => a.id === activityId) : null;
         const placeName = activity?.title || 'your stop';
 
+        if (activity) {
+            lastAiContext = buildChatContext(dayNumber, activity, 'arrived', null, null);
+        }
+
         openChatModal();
         const messages = document.getElementById('chatMessages');
         const input = document.getElementById('chatInput');
+
+        const stopKey = `${getPlanKey()}|${dayNumber}-${activityId}`;
+        const prevStopKey = (() => {
+            try { return localStorage.getItem(WISE_CURRENT_STOP_KEY) || ''; } catch (e) { return ''; }
+        })();
+        const isNewStop = stopKey && stopKey !== prevStopKey;
+
+        if (messages && isNewStop) {
+            messages.innerHTML = '';
+            try { localStorage.setItem(WISE_CURRENT_STOP_KEY, stopKey); } catch (e) {}
+        } else if (!prevStopKey && stopKey) {
+            try { localStorage.setItem(WISE_CURRENT_STOP_KEY, stopKey); } catch (e) {}
+        }
 
         const intro1 = `Hi! I'm Wise, your on-site tour guide for ${placeName}.`;
         const intro2 = `Want a 60-second intro, or do you have a specific question?`;
@@ -2523,6 +2616,7 @@ function populateAssistantActivities() {
         try { localStorage.removeItem(PLAN_INSIGHTS_DISMISSED_KEY); } catch (e) {}
         try { localStorage.removeItem(PLAN_SUGGESTIONS_HINT_SEEN_KEY); } catch (e) {}
         try { localStorage.removeItem(ARRIVAL_STORAGE_KEY); } catch (e) {}
+        try { localStorage.removeItem(WISE_CURRENT_STOP_KEY); } catch (e) {}
 
         planInsightsDismissed = {};
         planSuggestionsHintSeen = {};
@@ -3784,17 +3878,37 @@ function populateAssistantActivities() {
             const ctaSearchUrl = `https://www.google.com/search?q=${encodeURIComponent('CTA stops near me')}`;
 
             const stops = Array.isArray(nearby?.stops) ? nearby.stops : [];
-            const trains = stops.filter(s => (s.modes || []).includes('train')).slice(0, 4);
-            const buses = stops.filter(s => (s.modes || []).includes('bus')).slice(0, 4);
 
-            const formatStop = (s) => {
-                const dist = typeof s.distanceMi === 'number' ? `${s.distanceMi.toFixed(2)} mi` : '';
-                const routes = Array.isArray(s.routes) ? s.routes : [];
+            const getRouteShortNames = (s) => {
+                const routes = Array.isArray(s?.routes) ? s.routes : [];
                 const short = routes
                     .filter(r => r && (r.type === 'bus' || r.type === 'train'))
                     .map(r => r.shortName)
                     .filter(Boolean);
-                const uniq = Array.from(new Set(short)).slice(0, 10);
+                return Array.from(new Set(short)).slice(0, 12);
+            };
+
+            const dedupeStops = (list) => {
+                const seen = new Set();
+                const out = [];
+                for (const s of list) {
+                    const name = String(s?.name || '').trim().toLowerCase();
+                    const routesKey = getRouteShortNames(s).slice().sort().join(',');
+                    const key = `${name}|${routesKey}`;
+                    if (!name) continue;
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    out.push(s);
+                }
+                return out;
+            };
+
+            const trains = dedupeStops(stops.filter(s => (s.modes || []).includes('train'))).slice(0, 4);
+            const buses = dedupeStops(stops.filter(s => (s.modes || []).includes('bus'))).slice(0, 4);
+
+            const formatStop = (s) => {
+                const dist = typeof s.distanceMi === 'number' ? `${s.distanceMi.toFixed(2)} mi` : '';
+                const uniq = getRouteShortNames(s).slice(0, 10);
                 const routesLabel = uniq.length ? uniq.join(', ') : 'Routes unknown';
                 return `<div style="margin-top:8px;">
                     <strong>${s.name}</strong> <span style="color:var(--secondary-text); font-size:0.85rem;">(${dist})</span><br>
@@ -3836,7 +3950,6 @@ function populateAssistantActivities() {
             }
 
             assistantTransitHtml = `
-                <div style="color:var(--secondary-text); font-size:0.85rem;">Nearby transit stops:</div>
                 ${trainsHtml}
                 ${busesHtml}
                 <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
@@ -4437,17 +4550,6 @@ function populateAssistantActivities() {
             showToast('Confirm bookings (or book later) to start Tour Guide chat.', 'info');
             return;
         }
-        const isTravelRelated = (text) => {
-            const t = (text || '').toLowerCase();
-            const travelHints = ['trip','travel','itinerary','plan','day','schedule','museum','restaurant','food','hotel','map','route','chicago','booking','ticket','weather','time','move','reschedule','change','at ','am','pm','january','february','march','april','may','june','july','august','september','october','november','december'];
-            const offTopic = ['code','program','song','poem','draw','alien','flag','game','joke'];
-            if (offTopic.some(k => t.includes(k))) return false;
-            return travelHints.some(k => t.includes(k));
-        };
-        if (!isTravelRelated(userText)) {
-            appendChatBubble("I'm here to help with your Chicago trip-ask about your itinerary, days, times, places, bookings, or directions.", false);
-            return;
-        }
         try {
             const profileSummary = `Tempo:${userPreferences.tempo}|Price:${userPreferences.price}|Transport:${userPreferences.transportation}|TourGuide:${userPreferences.tourGuide}|Liked:${(userProfile.likedTags || []).join(', ')}`;
             const contextSummary = lastAiContext
@@ -4455,7 +4557,12 @@ function populateAssistantActivities() {
                 : 'No recent check-in.';
             const nowStr = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
             const scheduleDetail = lastAiContext?.dayScheduleDetail || 'Schedule unknown';
-            const systemContent = `You are a concise travel assistant for Chicago trips. Keep responses brief and actionable. User profile: ${profileSummary}. Context: ${contextSummary}. Current local time: ${nowStr}. Today schedule: ${scheduleDetail}. If weather is bad and next stop is outdoor, ask to swap to an indoor alternative. You cannot modify the itinerary; propose changes and ask for confirmation before reordering or moving items to another day. Prefer the next scheduled stop unless the user asks to change. Include short directions if possible.`;
+            const currentPlace = lastAiContext?.activityTitle ? `Current place: ${lastAiContext.activityTitle}.` : 'Current place: unknown.';
+            const wantsIntro = /\b(intro|introduction|60\s*sec|60-second|quick intro|tell me about|about this place)\b/i.test(userText || '');
+            const introRule = wantsIntro
+                ? 'The user is asking for an on-site intro. Give a 60-second spoken-style introduction about the current place: what it is, what to do first, 1-2 practical tips, and 1 fun fact. Keep it under 120 words.'
+                : '';
+            const systemContent = `You are Wise, an on-site tour guide and in-app support assistant for this Chicago trip app. Be concise and actionable. Answer questions about the current place, nearby options, timing, bookings, directions, and how to use the app.\nUser profile: ${profileSummary}\n${currentPlace}\nContext: ${contextSummary}\nCurrent local time: ${nowStr}\nToday schedule: ${scheduleDetail}\n${introRule}`;
             const reply = await callAssistant([
                 { role: 'system', content: systemContent },
                 { role: 'user', content: userText }

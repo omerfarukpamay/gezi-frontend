@@ -76,5 +76,7 @@ export {
     requestAudioNarration,
     callAssistant,
     refreshSuggestedToday,
-    sendChatPrompt
+    sendChatPrompt,
+    respondToArrivalPrompt,
+    openWiseForActivity
 } from './app.js';
