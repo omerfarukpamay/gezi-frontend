@@ -91,7 +91,17 @@ import {
         const day = getActiveDayActivities();
         if (!day || !day.length) return null;
         const label = day[0]?._lastDistance;
-        return parseMilesFromLabel(label);
+        const parsed = parseMilesFromLabel(label);
+        if (typeof parsed === 'number') return parsed;
+
+        const first = day[0];
+        const loc = settingsStore?.locationEnabled ? getUserLocationSnapshot(1000 * 60 * 2) : null;
+        if (loc && typeof first?.lat === 'number' && typeof first?.lng === 'number') {
+            const km = haversineDistanceKm({ lat: loc.lat, lng: loc.lng }, { lat: first.lat, lng: first.lng });
+            const miles = km * 0.621371;
+            return Number.isFinite(miles) ? miles : null;
+        }
+        return null;
     }
     function renderPlanInsights() {
         const bannerEl = document.getElementById('planBannerHost');
@@ -716,6 +726,34 @@ import {
         if (!match) return null;
         return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
     };
+
+    function sortActivitiesByTime(list) {
+        if (!Array.isArray(list)) return [];
+        return list
+            .map((item, originalIndex) => ({ item, originalIndex }))
+            .sort((a, b) => {
+                const aMin = timeToMinutes(a.item?.time);
+                const bMin = timeToMinutes(b.item?.time);
+                const aVal = aMin === null ? Number.POSITIVE_INFINITY : aMin;
+                const bVal = bMin === null ? Number.POSITIVE_INFINITY : bMin;
+                if (aVal !== bVal) return aVal - bVal;
+                return a.originalIndex - b.originalIndex;
+            })
+            .map(({ item }) => item);
+    }
+
+    function resortDayByTime(dayIdx) {
+        if (!currentItinerary || !Array.isArray(currentItinerary)) return;
+        if (dayIdx < 0 || dayIdx >= currentItinerary.length) return;
+        const day = currentItinerary[dayIdx];
+        if (!Array.isArray(day)) return;
+        currentItinerary[dayIdx] = sortActivitiesByTime(day);
+    }
+
+    function resortAllDaysByTime() {
+        if (!currentItinerary || !Array.isArray(currentItinerary)) return;
+        currentItinerary.forEach((_, idx) => resortDayByTime(idx));
+    }
     const durationToMinutes = (str) => {
         if (!str) return 60;
         const m = String(str).match(/(\d+)/);
@@ -1522,7 +1560,54 @@ function populateAssistantActivities() {
         renderAssistantInline();
     }
 
-    function submitChangeRequest() {
+    async function interpretAssistantChangeWithAi(userText, activity, baseDayIdx = activeDayIndex) {
+        if (!userText) return null;
+        const daysCount = (tripDates && tripDates.length) ? tripDates.length : (currentItinerary ? currentItinerary.length : 1);
+        const baseDayNumber = Math.max(1, Math.min(daysCount, baseDayIdx + 1));
+        const activityTitle = activity?.title || 'Selected activity';
+
+        const system = [
+            'You are a strict JSON parser for itinerary edit commands.',
+            `Trip has ${daysCount} day(s). Base day is Day ${baseDayNumber}. Selected activity: ${activityTitle}.`,
+            'Return JSON only with keys:',
+            '- action: one of "set_time", "move_day", "move_day_set_time", "unknown"',
+            '- day: integer 1..N (optional)',
+            '- time: "HH:MM" 24h format (optional)',
+            'Rules:',
+            '- "tomorrow" or "next" means base day + 1.',
+            '- "yesterday" or "previous" means base day - 1.',
+            '- If user says "move it to next" treat it as next day.',
+            '- If no valid day/time is found, return {"action":"unknown"}.',
+        ].join('\n');
+
+        const reply = await callAssistant([
+            { role: 'system', content: system },
+            { role: 'user', content: userText }
+        ]);
+        const raw = String(reply || '').trim();
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) return null;
+        try {
+            const parsed = JSON.parse(jsonMatch[0]);
+            const action = String(parsed?.action || '').toLowerCase();
+            if (!action || action === 'unknown') return null;
+            const out = {};
+            if (parsed?.day !== undefined && parsed?.day !== null) {
+                const n = Number(parsed.day);
+                if (Number.isFinite(n)) out.day = Math.max(1, Math.min(daysCount, Math.round(n)));
+            }
+            if (parsed?.time) {
+                const m = String(parsed.time).match(/(\d{1,2}):(\d{2})/);
+                if (m) out.time = `${String(parseInt(m[1], 10)).padStart(2, '0')}:${String(parseInt(m[2], 10)).padStart(2, '0')}`;
+            }
+            if (!out.day && !out.time) return null;
+            return out;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    async function submitChangeRequest() {
         const input = document.getElementById('assistantChangeInput');
         if (!assistantSelectedActivity || !input) {
             showToast('Select an activity first.', 'info');
@@ -1560,7 +1645,21 @@ function populateAssistantActivities() {
             }
         }
 
-        const changeResult = applyChangeCommand(parsed || textRaw, assistantSelectedActivity);
+        let changeResult = applyChangeCommand(parsed || textRaw, assistantSelectedActivity);
+        if (!changeResult.changed && changeResult.needsAi) {
+            try {
+                showToast('Interpreting your request...', 'info');
+                const structuredAi = await interpretAssistantChangeWithAi(textRaw, assistantSelectedActivity, activeDayIndex);
+                if (!structuredAi) {
+                    showToast('Could not understand that. Try: \"Move to Day 2\" or \"Set time to 14:30\".', 'info');
+                    return;
+                }
+                changeResult = applyChangeCommand(structuredAi, assistantSelectedActivity);
+            } catch (e) {
+                showToast(e?.message || 'AI is unavailable. Please rephrase with day/time.', 'info');
+                return;
+            }
+        }
         if (!changeResult.changed) {
             showToast(changeResult.message || 'No change applied.', 'info');
             return;
@@ -1588,6 +1687,7 @@ function populateAssistantActivities() {
             showToast('Changes saved.', 'success');
             recordChange(activeDayIndex, assistantLastChangeMessage || 'Assistant change', assistantLastSnapshot);
             setChatFocusToDay(activeDayIndex);
+            resortAllDaysByTime();
             if (assistantLastChangedActivityId !== null) {
                 const dayList = currentItinerary[assistantLastChangedDayIdx] || [];
                 const target = dayList.find(a => a.id === assistantLastChangedActivityId);
@@ -1646,10 +1746,18 @@ function populateAssistantActivities() {
     }
 
     // Apply change commands to itinerary
-    function parseRequestedDayIndex(text) {
+    function parseRequestedDayIndex(text, baseDayIdx = activeDayIndex) {
         if (!tripDates || !tripDates.length) return null;
+        const lower = String(text || '').toLowerCase();
+        const days = tripDates.length;
+        if (/\b(tomorrow|next\s+day)\b/.test(lower) || (/\b(move|shift|push|reschedule)\b/.test(lower) && /\bnext\b/.test(lower))) {
+            return Math.min(days - 1, Math.max(0, baseDayIdx + 1));
+        }
+        if (/\b(yesterday|previous\s+day|prior\s+day)\b/.test(lower) || (/\b(move|shift|push|reschedule)\b/.test(lower) && /\b(previous|prior|back)\b/.test(lower))) {
+            return Math.max(0, baseDayIdx - 1);
+        }
         const months = ['january','february','march','april','may','june','july','august','september','october','november','december'];
-        const m = text.toLowerCase().match(/(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(st|nd|rd|th)?/);
+        const m = lower.match(/(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(st|nd|rd|th)?/);
         if (m) {
             const monthIdx = months.indexOf(m[1]);
             const dayNum = parseInt(m[2], 10);
@@ -1665,7 +1773,7 @@ function populateAssistantActivities() {
         if (dayMatch) {
             return Math.max(0, parseInt(dayMatch[1], 10) - 1);
         }
-        const weekdayMatch = text.toLowerCase().match(/(next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/);
+        const weekdayMatch = lower.match(/(next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/);
         if (weekdayMatch) {
             const targetWeekday = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'].indexOf(weekdayMatch[2]);
             const nextRequested = !!weekdayMatch[1];
@@ -1693,6 +1801,7 @@ function populateAssistantActivities() {
             text = JSON.stringify(text);
         }
         const lower = typeof text === 'string' ? text.toLowerCase() : '';
+        const originDayIdx = activeDayIndex;
         const activities = getActiveDayActivities().slice();
         const idx = activities.findIndex(a => a.id === activity.id);
         if (idx === -1) return { changed: false, message: 'Activity not found.' };
@@ -1723,6 +1832,8 @@ function populateAssistantActivities() {
                     activities.splice(idx, 1);
                     writeBackDayActivities(activities);
                     currentItinerary[targetIdx].push(updated);
+                    resortDayByTime(originDayIdx);
+                    resortDayByTime(targetIdx);
                     activeDayIndex = targetIdx;
                     saveItinerary(currentItinerary);
                     renderItineraryUI(currentItinerary, tripDates || []);
@@ -1756,7 +1867,7 @@ function populateAssistantActivities() {
         }
 
         // Move to another day (can be combined with time change)
-        const requestedIdx = parseRequestedDayIndex(text);
+        const requestedIdx = parseRequestedDayIndex(text, originDayIdx);
         if (lower.includes('move') || lower.includes('another day') || requestedIdx !== null) {
             const targetIdx = requestedIdx !== null
                 ? Math.max(0, Math.min(requestedIdx, (tripDates || []).length ? tripDates.length - 1 : requestedIdx))
@@ -1766,6 +1877,8 @@ function populateAssistantActivities() {
                 activities.splice(idx, 1);
                 writeBackDayActivities(activities);
                 currentItinerary[targetIdx].push(updated);
+                resortDayByTime(originDayIdx);
+                resortDayByTime(targetIdx);
                 activeDayIndex = targetIdx;
                 saveItinerary(currentItinerary);
                 renderItineraryUI(currentItinerary, tripDates || []);
@@ -1800,15 +1913,17 @@ function populateAssistantActivities() {
             }
         }
 
-        // If nothing matched, just append a note
         if (!changed) {
-            updated.details = `${updated.details || ''}\nChange request: ${text}`;
-            if (!updated.title.includes('(updated)')) updated.title = `${updated.title} (updated)`;
-            changed = true;
+            const t = String(text || '').toLowerCase();
+            const looksLikeCommand = /(move|shift|push|reschedule|tomorrow|next|yesterday|previous|prior|day\\s+\\d|at\\s+\\d|am|pm|\\d{1,2}:\\d{2}|time)/.test(t);
+            if (looksLikeCommand) {
+                return { changed: false, needsAi: true, message: 'Could not interpret that change.' };
+            }
+            return { changed: false, message: 'No change detected. Please mention a day or a time.' };
         }
 
         activities[idx] = updated;
-        writeBackDayActivities(activities);
+        writeBackDayActivities(sortActivitiesByTime(activities));
         saveItinerary(currentItinerary);
         renderItineraryUI(currentItinerary, tripDates || []);
         if (!preview) {
@@ -4069,12 +4184,14 @@ function populateAssistantActivities() {
                 const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activity.title + ', Chicago')}`;
                 const hasCoords = activity.lat && activity.lng;
                 const canShowRouting = !!settingsStore?.locationEnabled;
+                const userOrigin = canShowRouting ? getUserLocationSnapshot(1000 * 60 * 2) : null;
                 const prev = idx > 0 ? dayPlan[idx - 1] : null;
                 const origin = prev && prev.lat && prev.lng ? prev : LOOP_COORDS;
                 const bookingKey = `${dayNumber}-${activity.id}`;
                 const booked = isBooked(dayNumber, activity.id);
+                const directionsOrigin = userOrigin ? userOrigin : origin;
                 const directionsUrl = hasCoords
-                    ? `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${activity.lat},${activity.lng}`
+                    ? `https://www.google.com/maps/dir/?api=1&origin=${directionsOrigin.lat},${directionsOrigin.lng}&destination=${activity.lat},${activity.lng}`
                     : mapsUrl;
                 const routeChip = (hasCoords && canShowRouting)
                     ? `<span class="route-chip" data-day="${dayNumber}" data-idx="${idx}" data-lat="${activity.lat}" data-lng="${activity.lng}" data-prev-lat="${origin.lat}" data-prev-lng="${origin.lng}" title="Distance & duration">Locating...</span>`
