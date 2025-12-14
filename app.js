@@ -261,8 +261,8 @@ import {
 
 /* --------- DATA: 3 TEST EXPERIENCES ---------- */
     const experiences = [
-        { id: 1, title: "Luxury Helicopter Tour", category: "Adventure", price: 3, img: "https://images.unsplash.com/photo-1540962351504-03099e0a754b?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "luxury", details: "A 30-minute private helicopter ride offering unmatched views of the Magnificent Mile and Lake Michigan.", insta: "Best shot is the tilt-shift view looking straight down at The Loop. Use a wide-angle lens!", time: "10:00", duration: "45 min", lat: 41.9881274, lng: -87.65572, address: "5820 N Sheridan Rd, Chicago, IL 60660", requiresBooking: true },
-        { id: 2, title: "Deep Dish Pizza (Lou Malnati's)", category: "Food", price: 2, img: "https://images.unsplash.com/photo-1619860167683-176375037549?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "food_mid", details: "Experience authentic Chicago-style deep-dish pizza. Recommended: Buttercrust with sausage.", insta: "Get a close-up of the cheese pull before you slice the pie! Make sure the tomato sauce looks vibrant.", time: "12:30", duration: "1 hr 15 min", lat: 41.8938, lng: -87.6276, requiresBooking: false },
+        { id: 1, title: "Luxury Helicopter Tour", category: "Adventure", price: 3, img: "https://images.unsplash.com/photo-1540962351504-03099e0a754b?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "luxury", details: "A 30-minute private helicopter ride offering unmatched views of the Magnificent Mile and Lake Michigan.", insta: "Best shot is the tilt-shift view looking straight down at The Loop. Use a wide-angle lens!", time: "10:00", duration: "45 min", lat: 41.9407935, lng: -87.6443132, address: "3209 N Broadway, Chicago, IL 60657", requiresBooking: true },
+        { id: 2, title: "Deep Dish Pizza (Lou Malnati's)", category: "Food", price: 2, img: "https://images.unsplash.com/photo-1619860167683-176375037549?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "food_mid", details: "Experience authentic Chicago-style deep-dish pizza. Recommended: Buttercrust with sausage.", insta: "Get a close-up of the cheese pull before you slice the pie! Make sure the tomato sauce looks vibrant.", time: "12:30", duration: "1 hr 15 min", lat: 41.9882449, lng: -87.6554399, address: "5822 N Sheridan Rd, Chicago, IL 60660", requiresBooking: false },
         { id: 3, title: "Alinea (3-Star Michelin)", category: "Fine Dining", price: 3, img: "https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=600", tag: "luxury_food", details: "World-renowned culinary experience. This is an evening activity requiring formal attire and advance booking.", insta: "Capture the artistic presentation of the floating dessert course. Use soft, directional lighting.", time: "19:00", duration: "3 hr", lat: 41.9161, lng: -87.6483, requiresBooking: true }
     ];
 
@@ -1376,29 +1376,40 @@ function writeBackDayActivities(activities) {
                 break;
             }
             case ASSISTANT_STATES.TOUR_GUIDE_READY: {
-                const today = getActiveDayActivities();
-                const agenda = today.map(a => `${a.time || 'TBD'} - ${a.title}`).join('<br>');
-                const dayDate = tripDates && tripDates[activeDayIndex] ? tripDates[activeDayIndex] : null;
-                const weather = dayDate ? getWeatherSnapshotSync(dayDate) : getWeatherSnapshotSync(new Date());
                 if (questionTitle) questionTitle.textContent = 'Tour guide is ready!';
                 const deferred = !!bookingDeferred[planKey];
                 const reminder = (outstanding.length && deferred)
                     ? `<div style="margin-top:6px; padding:6px 8px; border:1px solid rgba(234,179,8,0.5); border-radius:8px; background:rgba(234,179,8,0.08); color:var(--accent-gold); font-size:0.85rem;">Bookings pending (${outstanding.length}). You can complete them anytime.</div>`
                     : '';
                 const tourGuideOn = isTourGuideActive();
-                const intro = tourGuideOn
-                    ? `AI Tour Guide is ready. You'll get prompts when you're near a stop.`
-                    : `Confirm booking status (or choose "I'll book later") to start Wise.`;
-                if (questionSub) questionSub.innerHTML = `${intro}<br>${weather.icon || ''} ${weather.temp || ''} ${weather.desc || ''}<br>${agenda}${reminder}`;
+                const next = (() => {
+                    const day = getActiveDayActivities();
+                    if (!day || !day.length) return null;
+                    const sorted = sortActivitiesByTime(day);
+                    return sorted[0] || null;
+                })();
+
+                const locEnabled = !!settingsStore?.locationEnabled;
+                const nextLine = next
+                    ? `Next: ${next.title}${next.time ? ` · ${next.time}` : ''}`
+                    : 'Next: Not set yet';
+
+                const line2 = locEnabled
+                    ? 'I’ll prompt you when you’re near your next stop.'
+                    : 'Enable location for live ETA and arrival prompts.';
+
+                const intro = tourGuideOn ? 'Tour Guide is active.' : `Confirm booking status (or choose "I'll book later") to start Wise.`;
+                if (questionSub) {
+                    questionSub.innerHTML = `${intro}<div style="margin-top:6px;">${line2}</div><div style="margin-top:8px; font-weight:700;">${nextLine}</div>${reminder}`;
+                }
                 if (questionActions) {
                     const bookingBtn = outstanding.length && (deferred || isPlanLocked())
-                        ? `<button class="assistant-chip" onclick="setAssistantMode('${ASSISTANT_STATES.BOOKING_ALERT}')">Review bookings</button>`
+                        ? `<button class="assistant-chip" onclick="setAssistantMode('${ASSISTANT_STATES.BOOKING_ALERT}')">Booking checklist</button>`
                         : '';
                     questionActions.innerHTML = `
                         ${bookingBtn}
                         <button class="assistant-chip" onclick="openAssistantChat()">Open Wise</button>
-                        <button class="assistant-chip" onclick="skipNextStop(this)">Skip next stop</button>
-                        <button class="assistant-chip" onclick="moveNextToTomorrow(this)">Delay next stop</button>
+                        <button class="assistant-chip" onclick="openTransitPreview()">Open transit options</button>
                     `;
                 }
                 break;
