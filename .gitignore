@@ -7,3 +7,19 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+*.log
+*.err
+
+tmp_*/
+tmp_*.js
+tmp_render_*/
+tmp_push_*/
+
+gezi-frontend/
+gezi-frontend-zip/
+gezi-backend/
+gezi-backend-zip/
+
+workspace.code-workspace
+gcm_login.txt
+Gezi App.html

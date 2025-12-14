@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
     <link rel="icon" href="data:image/png;base64,iVBORw0KGgo=">
 
-    <link rel="stylesheet" href="styles.css?v=5">
+    <link rel="stylesheet" href="styles.css?v=53">
 </head>
 <body>
 
@@ -557,7 +557,10 @@
             <button class="assistant-close" onclick="closeChatModal()">Close</button>
         </div>
     </div>
-    <div class="chat-modal-body" id="chatMessages"></div>
+    <div class="chat-modal-body">
+        <div class="wise-guide" id="wiseGuide" style="display:none;"></div>
+        <div id="chatMessages"></div>
+    </div>
     <div class="chat-modal-footer">
         <input class="chat-input" id="chatInput" placeholder="Ask about the place you're visiting..." onkeydown="handleChatKeydown(event)" />
         <button class="chat-action" title="Record voice (send to AI later)"><i class="fa-solid fa-microphone"></i></button>
@@ -587,9 +590,9 @@
 
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="api.js?v=43"></script>
-  <script src="storage.js?v=43"></script>
-  <script src="ui.js?v=43"></script>
-  <script type="module" src="main.js?v=43"></script>
+  <script src="api.js?v=55"></script>
+  <script src="storage.js?v=55"></script>
+  <script src="ui.js?v=55"></script>
+  <script type="module" src="main.js?v=55"></script>
 </body>
 </html>

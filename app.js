@@ -7,6 +7,8 @@ import {
 } from './services/weather.js';
 import { fetchNearbyPlaces, fetchPlaceMetaByName, buildGoogleMapsSearchUrl } from './services/osm.js';
 import { findNearestCtaStation, findNearbyCtaStations, fetchCtaTrainArrivals } from './services/cta.js';
+import { getArrivalConfig } from './services/arrivalConfig.js';
+import { parseSuggestionLine } from './services/suggestions.js';
 import {
     haversineDistanceKm,
     estimateTravelMinutes,
@@ -389,10 +391,11 @@ import {
 
     /* ---------- ARRIVAL DETECTION (GPS + DWELL) ---------- */
     const ARRIVAL_STORAGE_KEY = 'assistant_arrival_state_v1';
-    const ARRIVAL_RADIUS_METERS = 100;
-    const ARRIVAL_DWELL_MS = 1000 * 60 * 2;
-    const ARRIVAL_SNOOZE_MS = 1000 * 60 * 10;
-    const ARRIVAL_PROMPT_CLEAR_METERS = 250;
+    const ARRIVAL_CONFIG = getArrivalConfig();
+    const ARRIVAL_RADIUS_METERS = ARRIVAL_CONFIG.radiusMeters;
+    const ARRIVAL_DWELL_MS = ARRIVAL_CONFIG.dwellMs;
+    const ARRIVAL_SNOOZE_MS = ARRIVAL_CONFIG.snoozeMs;
+    const ARRIVAL_PROMPT_CLEAR_METERS = ARRIVAL_CONFIG.promptClearMeters;
     const WISE_CURRENT_STOP_KEY = 'assistant_wise_current_stop_v1';
 
     function loadArrivalState() {
@@ -469,14 +472,23 @@ import {
         return R * c;
     }
 
-    function getNextArrivableStop() {
+    function getNearestArrivableStop(locationSnap) {
         if (!currentItinerary || !currentItinerary.length) return null;
-        const dayNumber = activeDayIndex + 1;
-        const day = getActiveDayActivities();
-        if (!day || !day.length) return null;
-        const next = day.find(a => a && typeof a.lat === 'number' && typeof a.lng === 'number' && !isStopArrivalConfirmed(dayNumber, a.id));
-        if (!next) return null;
-        return { dayNumber, activity: next };
+        if (!locationSnap || typeof locationSnap.lat !== 'number' || typeof locationSnap.lng !== 'number') return null;
+
+        let best = null;
+        currentItinerary.forEach((day, idx) => {
+            const dayNumber = idx + 1;
+            (day || []).forEach((activity) => {
+                if (!activity || typeof activity.lat !== 'number' || typeof activity.lng !== 'number') return;
+                if (isStopArrivalConfirmed(dayNumber, activity.id)) return;
+                const distanceM = haversineMeters(locationSnap.lat, locationSnap.lng, activity.lat, activity.lng);
+                if (!best || distanceM < best.distanceM) {
+                    best = { dayNumber, activity, distanceM };
+                }
+            });
+        });
+        return best;
     }
 
     function clearArrivalPromptUi() {
@@ -534,7 +546,30 @@ import {
             clearArrivalPromptUi();
             return;
         }
-        const target = getNextArrivableStop();
+
+        // If a prompt is already visible, keep it on screen until the user answers,
+        // unless they move far enough away from that specific stop.
+        if (arrivalPromptShownFor) {
+            const sepIdx = arrivalPromptShownFor.indexOf('-');
+            const dStr = sepIdx >= 0 ? arrivalPromptShownFor.slice(0, sepIdx) : '';
+            const aStr = sepIdx >= 0 ? arrivalPromptShownFor.slice(sepIdx + 1) : '';
+            const dNum = parseInt(dStr, 10);
+            const day = dNum && currentItinerary && currentItinerary[dNum - 1] ? currentItinerary[dNum - 1] : null;
+            const prompted = day ? day.find(a => String(a?.id) === String(aStr)) : null;
+            if (!prompted || typeof prompted.lat !== 'number' || typeof prompted.lng !== 'number') {
+                arrivalCandidate = null;
+                clearArrivalPromptUi();
+                return;
+            }
+            const distToPrompted = haversineMeters(locationSnap.lat, locationSnap.lng, prompted.lat, prompted.lng);
+            if (distToPrompted > ARRIVAL_PROMPT_CLEAR_METERS) {
+                arrivalCandidate = null;
+                clearArrivalPromptUi();
+            }
+            return;
+        }
+
+        const target = getNearestArrivableStop(locationSnap);
         if (!target) {
             arrivalCandidate = null;
             clearArrivalPromptUi();
@@ -543,9 +578,12 @@ import {
 
         const { dayNumber, activity } = target;
         if (!activity || typeof activity.lat !== 'number' || typeof activity.lng !== 'number') return;
-        const distanceM = haversineMeters(locationSnap.lat, locationSnap.lng, activity.lat, activity.lng);
+        const distanceM = typeof target.distanceM === 'number'
+            ? target.distanceM
+            : haversineMeters(locationSnap.lat, locationSnap.lng, activity.lat, activity.lng);
+        const currentStopKey = getStopKey(dayNumber, activity.id);
 
-        if (arrivalPromptShownFor === getStopKey(dayNumber, activity.id) && distanceM > ARRIVAL_PROMPT_CLEAR_METERS) {
+        if (arrivalPromptShownFor === currentStopKey && distanceM > ARRIVAL_PROMPT_CLEAR_METERS) {
             arrivalCandidate = null;
             clearArrivalPromptUi();
             return;
@@ -553,19 +591,19 @@ import {
 
         if (distanceM <= ARRIVAL_RADIUS_METERS) {
             if (isArrivalPromptSnoozed(dayNumber, activity.id)) return;
-            if (!arrivalCandidate || arrivalCandidate.stopKey !== getStopKey(dayNumber, activity.id)) {
-                arrivalCandidate = { stopKey: getStopKey(dayNumber, activity.id), enteredAt: Date.now() };
+            if (!arrivalCandidate || arrivalCandidate.stopKey !== currentStopKey) {
+                arrivalCandidate = { stopKey: currentStopKey, enteredAt: Date.now() };
                 return;
             }
             if (Date.now() - arrivalCandidate.enteredAt >= ARRIVAL_DWELL_MS) {
-                if (arrivalPromptShownFor !== getStopKey(dayNumber, activity.id) && !isStopArrivalConfirmed(dayNumber, activity.id)) {
+                if (arrivalPromptShownFor !== currentStopKey && !isStopArrivalConfirmed(dayNumber, activity.id)) {
                     renderArrivalPromptUi(dayNumber, activity);
                 }
             }
             return;
         }
 
-        if (arrivalCandidate && arrivalCandidate.stopKey === getStopKey(dayNumber, activity.id)) {
+        if (arrivalCandidate && arrivalCandidate.stopKey === currentStopKey) {
             arrivalCandidate = null;
         }
     }
@@ -832,7 +870,7 @@ import {
         return `
             <div style="margin-top:10px; padding:10px; border-radius:12px; border:1px solid rgba(148,163,184,0.28); background: rgba(2,6,23,0.22);">
                 <div style="font-weight:800; margin-bottom:4px;">Next stop briefing</div>
-                <div style="font-weight:700; margin-bottom:6px;">${activity.title}${activity.time ? ` · ${activity.time}` : ''}${bookingLine ? ` · <span style=\"color:var(--accent-gold)\">${bookingLine}</span>` : ''}</div>
+                <div style="font-weight:700; margin-bottom:6px;">${activity.title}${activity.time ? ` | ${activity.time}` : ''}${bookingLine ? ` | <span style=\"color:var(--accent-gold)\">${bookingLine}</span>` : ''}</div>
                 ${about ? `<div style="color:var(--secondary-text); font-size:0.9rem; line-height:1.35;">${about}</div>` : ''}
                 ${bring && bring.length ? `
                     <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px;">
@@ -1207,6 +1245,9 @@ import {
         }
         if (modal) {
             openChatModal();
+            setWiseActiveContext(null, null);
+            renderWiseGuideCard(null);
+            wiseGuideDismissedForStopKey = null;
             const input = document.getElementById('chatInput');
             if (input) input.focus();
             const messages = document.getElementById('chatMessages');
@@ -1482,10 +1523,11 @@ function writeBackDayActivities(activities) {
                     const bookingBtn = outstanding.length && (deferred || isPlanLocked())
                         ? `<button class="assistant-chip" onclick="setAssistantMode('${ASSISTANT_STATES.BOOKING_ALERT}')">Booking checklist</button>`
                         : '';
+                    const transportLabel = getTransportActionLabel();
                     questionActions.innerHTML = `
                         ${bookingBtn}
                         <button class="assistant-chip" onclick="openAssistantChat()">Open Wise</button>
-                        <button class="assistant-chip" onclick="openTransitPreview()">Open transit options</button>
+                        <button class="assistant-chip" onclick="openTransitPreview()">${transportLabel}</button>
                     `;
                 }
                 break;
@@ -1495,6 +1537,11 @@ function writeBackDayActivities(activities) {
                 if (questionSub) questionSub.textContent = '';
                 if (questionActions) questionActions.innerHTML = '';
                 if (insights) insights.style.display = 'block';
+                const titleEl = insights?.querySelector?.('.assistant-title');
+                if (titleEl) {
+                    const mode = getTransportMode();
+                    titleEl.textContent = mode === 'rideshare' ? 'Uber / Lyft' : mode === 'private' ? 'Navigation' : 'Transit options';
+                }
                 if (insightsBody) insightsBody.innerHTML = assistantTransitHtml || 'No transit info available.';
                 if (insightsActions) {
                     insightsActions.innerHTML = `
@@ -2027,6 +2074,30 @@ function populateAssistantActivities() {
         const noBtn = document.getElementById('assistantNoBtn');
         if (yesBtn) yesBtn.addEventListener('click', () => setAssistantMode(ASSISTANT_STATES.REFINEMENT_PICK_ACTIVITY));
         if (noBtn) noBtn.addEventListener('click', () => confirmDayPlan());
+
+        if (!wiseGuideActionsInitialized) {
+            const guideEl = document.getElementById('wiseGuide');
+            if (guideEl) {
+                guideEl.addEventListener('click', (e) => {
+                    const closeBtn = e.target?.closest?.('[data-wise-guide-close]');
+                    if (closeBtn) {
+                        e.preventDefault();
+                        const stopKey = wiseActiveContext.dayNumber && wiseActiveContext.activityId
+                            ? `${getPlanKey()}|${wiseActiveContext.dayNumber}-${wiseActiveContext.activityId}`
+                            : null;
+                        if (stopKey) wiseGuideDismissedForStopKey = stopKey;
+                        dismissWiseGuideCard();
+                        return;
+                    }
+                    const btn = e.target?.closest?.('[data-wise-action]');
+                    const action = btn?.getAttribute?.('data-wise-action');
+                    if (!action) return;
+                    e.preventDefault();
+                    sendWiseQuickAction(action);
+                });
+                wiseGuideActionsInitialized = true;
+            }
+        }
         renderAssistantInline();
     }
 
@@ -2107,6 +2178,10 @@ function populateAssistantActivities() {
         container.scrollTop = container.scrollHeight;
     }
 
+    let wiseActiveContext = { dayNumber: null, activityId: null };
+    let wiseGuideActionsInitialized = false;
+    let wiseGuideDismissedForStopKey = null;
+
     function openChatModal() {
         const modal = document.getElementById('chatModal');
         if (modal) modal.classList.add('open');
@@ -2123,7 +2198,79 @@ function populateAssistantActivities() {
         modal.classList.toggle('expanded');
     }
 
-    function openWiseForActivity(dayNumber, activityId) {
+    function getWiseThemeForActivity(activity) {
+        const title = String(activity?.title || '').toLowerCase();
+        const category = String(activity?.category || '').toLowerCase();
+        if (category.includes('food') || title.includes('pizza')) return 'food';
+        if (category.includes('fine') || title.includes('alinea')) return 'fine';
+        if (category.includes('adventure') || title.includes('helicopter')) return 'adventure';
+        return 'default';
+    }
+
+    function renderWiseGuideCard(activity, dayNumber) {
+        const guideEl = document.getElementById('wiseGuide');
+        const modal = document.getElementById('chatModal');
+        if (!guideEl || !modal) return;
+        if (!activity) {
+            guideEl.style.display = 'none';
+            guideEl.innerHTML = '';
+            modal.dataset.wiseTheme = 'default';
+            return;
+        }
+
+        modal.dataset.wiseTheme = getWiseThemeForActivity(activity);
+        guideEl.style.display = 'block';
+        guideEl.classList.remove('dismissed');
+        guideEl.innerHTML = `
+            <button type="button" class="wise-guide-close" data-wise-guide-close="1" title="Hide"><i class="fa-solid fa-xmark"></i></button>
+            <div class="wise-guide-mini-title">${activity.title}</div>
+            <div class="wise-actions" style="margin-top:10px;">
+                <button type="button" class="wise-action-btn primary" data-wise-action="intro"><i class="fa-solid fa-circle-info"></i> Intro</button>
+                <button type="button" class="wise-action-btn" data-wise-action="next"><i class="fa-solid fa-shoe-prints"></i> Do next</button>
+                <button type="button" class="wise-action-btn" data-wise-action="tips"><i class="fa-solid fa-lightbulb"></i> Tips</button>
+            </div>
+        `;
+    }
+
+    function dismissWiseGuideCard() {
+        const guideEl = document.getElementById('wiseGuide');
+        if (!guideEl || guideEl.style.display === 'none') return;
+        guideEl.classList.add('dismissed');
+        guideEl.style.display = 'none';
+    }
+
+    function setWiseActiveContext(dayNumber, activityId) {
+        wiseActiveContext = { dayNumber: dayNumber || null, activityId: activityId || null };
+    }
+
+    function sendWiseQuickAction(action) {
+        const dayNumber = wiseActiveContext.dayNumber;
+        const activityId = wiseActiveContext.activityId;
+        const day = dayNumber ? (currentItinerary && currentItinerary[dayNumber - 1]) : null;
+        const activity = day && activityId ? day.find(a => a.id === activityId) : null;
+
+        if (!activity || !dayNumber) {
+            showToast('Open Wise from a stop to use quick actions.', 'info');
+            return;
+        }
+
+        lastAiContext = buildChatContext(dayNumber, activity, 'arrived', null, null);
+
+        const prompts = {
+            intro: `Give me a 60-second spoken-style intro for ${activity.title}. Include what it is, what to do first, 2 practical tips, and 1 fun fact.`,
+            next: `I'm at ${activity.title} right now. What should I do first? Give 3 short steps and 1 timing tip.`,
+            tips: `Give quick tips for ${activity.title}: etiquette, best photo spot, and what to order/see. Keep it concise.`
+        };
+        const labels = { intro: 'Intro', next: 'Do next', tips: 'Tips' };
+
+        const prompt = prompts[action];
+        if (!prompt) return;
+
+        appendChatBubble(labels[action] || 'Quick action', true);
+        sendChatPrompt(prompt);
+    }
+
+    function openWiseForActivity(dayNumber, activityId, options = {}) {
         const day = currentItinerary && currentItinerary[dayNumber - 1];
         const activity = day ? day.find(a => a.id === activityId) : null;
         const placeName = activity?.title || 'your stop';
@@ -2133,6 +2280,10 @@ function populateAssistantActivities() {
         }
 
         openChatModal();
+        const modal = document.getElementById('chatModal');
+        if (modal && options?.expanded) {
+            modal.classList.add('expanded');
+        }
         const messages = document.getElementById('chatMessages');
         const input = document.getElementById('chatInput');
 
@@ -2147,6 +2298,17 @@ function populateAssistantActivities() {
             try { localStorage.setItem(WISE_CURRENT_STOP_KEY, stopKey); } catch (e) {}
         } else if (!prevStopKey && stopKey) {
             try { localStorage.setItem(WISE_CURRENT_STOP_KEY, stopKey); } catch (e) {}
+        }
+
+        // Show the animated guide header once per stop; hide it after any interaction.
+        setWiseActiveContext(dayNumber, activityId);
+        if (isNewStop) {
+            wiseGuideDismissedForStopKey = null;
+            renderWiseGuideCard(activity, dayNumber);
+        } else if (wiseGuideDismissedForStopKey === stopKey) {
+            dismissWiseGuideCard();
+        } else {
+            renderWiseGuideCard(activity, dayNumber);
         }
 
         const intro1 = `Hi! I'm Wise, your on-site tour guide for ${placeName}.`;
@@ -3123,27 +3285,38 @@ function populateAssistantActivities() {
     }
 
     function respondToArrivalPrompt(didArrive, dayNumber, activityId) {
+        const findActivityById = (id) => {
+            if (!currentItinerary || !Array.isArray(currentItinerary)) return null;
+            for (let idx = 0; idx < currentItinerary.length; idx++) {
+                const day = currentItinerary[idx] || [];
+                const found = day.find(a => a && a.id === id);
+                if (found) return { dayNumber: idx + 1, activity: found };
+            }
+            return null;
+        };
+
         const day = currentItinerary && currentItinerary[dayNumber - 1];
         const activity = day ? day.find(a => a.id === activityId) : null;
+        const resolved = activity ? { dayNumber, activity } : findActivityById(activityId);
         clearArrivalPromptUi();
         arrivalCandidate = null;
 
         if (!didArrive) {
-            if (activity) {
-                snoozeArrivalPrompt(dayNumber, activityId);
+            if (resolved?.activity) {
+                snoozeArrivalPrompt(resolved.dayNumber, activityId);
             }
             showToast('No problem. You can open Wise anytime by tapping the chat icon.', 'info');
             return;
         }
 
-        if (!activity) {
+        if (!resolved?.activity) {
             showToast('Stop not found in the plan.', 'error');
             return;
         }
 
-        confirmStopArrival(dayNumber, activityId, { title: activity.title });
-        recordArrivalSignal(dayNumber, activity, 'gps');
-        openWiseForActivity(dayNumber, activityId);
+        confirmStopArrival(resolved.dayNumber, activityId, { title: resolved.activity.title });
+        recordArrivalSignal(resolved.dayNumber, resolved.activity, 'gps');
+        openWiseForActivity(resolved.dayNumber, activityId, { expanded: true });
         updateArrivalTracking();
     }
 
@@ -3843,6 +4016,153 @@ function populateAssistantActivities() {
         return 'walk';
     }
 
+    function getNextStopForTransport(dayIndex = activeDayIndex) {
+        const dayNumber = dayIndex + 1;
+        const day = currentItinerary && currentItinerary[dayIndex] ? currentItinerary[dayIndex] : [];
+        if (!day || !day.length) return null;
+        const next = day.find(a => a && typeof a.lat === 'number' && typeof a.lng === 'number' && !isStopArrivalConfirmed(dayNumber, a.id));
+        return next || day.find(a => a && typeof a.lat === 'number' && typeof a.lng === 'number') || null;
+    }
+
+    function buildGoogleDirectionsUrl({ origin, destination, mode = 'driving' }) {
+        if (!destination || typeof destination.lat !== 'number' || typeof destination.lng !== 'number') {
+            return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('Chicago')}`;
+        }
+        const destStr = `${destination.lat},${destination.lng}`;
+        const originStr = origin && typeof origin.lat === 'number' && typeof origin.lng === 'number'
+            ? `${origin.lat},${origin.lng}`
+            : '';
+        const base = 'https://www.google.com/maps/dir/?api=1';
+        const params = new URLSearchParams();
+        if (originStr) params.set('origin', originStr);
+        params.set('destination', destStr);
+        params.set('travelmode', mode);
+        return `${base}&${params.toString()}`;
+    }
+
+    function buildUberUrl({ pickup, dropoff, dropoffName }) {
+        if (!dropoff || typeof dropoff.lat !== 'number' || typeof dropoff.lng !== 'number') return 'https://m.uber.com/ul/';
+        const base = 'https://m.uber.com/ul/';
+        const params = new URLSearchParams();
+        params.set('action', 'setPickup');
+        if (pickup && typeof pickup.lat === 'number' && typeof pickup.lng === 'number') {
+            params.set('pickup[latitude]', String(pickup.lat));
+            params.set('pickup[longitude]', String(pickup.lng));
+            params.set('pickup[formatted_address]', 'Current location');
+        } else {
+            params.set('pickup', 'my_location');
+            params.set('pickup[formatted_address]', 'Current location');
+        }
+        params.set('dropoff[latitude]', String(dropoff.lat));
+        params.set('dropoff[longitude]', String(dropoff.lng));
+        if (dropoffName) params.set('dropoff[nickname]', String(dropoffName).slice(0, 60));
+        if (dropoffName) params.set('dropoff[formatted_address]', String(dropoffName).slice(0, 80));
+        return `${base}?${params.toString()}`;
+    }
+
+    function buildLyftUrl({ pickup, dropoff, dropoffName }) {
+        if (!dropoff || typeof dropoff.lat !== 'number' || typeof dropoff.lng !== 'number') return 'https://www.lyft.com/ride';
+        // Lyft web deep link uses lyft.com/ride (ride.lyft.com often ignores prefill params).
+        const base = 'https://www.lyft.com/ride';
+        const params = new URLSearchParams();
+        params.set('id', 'lyft');
+        if (pickup && typeof pickup.lat === 'number' && typeof pickup.lng === 'number') {
+            params.set('pickup[latitude]', String(pickup.lat));
+            params.set('pickup[longitude]', String(pickup.lng));
+            params.set('pickup[address]', 'Current location');
+        } else {
+            params.set('pickup', 'my_location');
+            params.set('pickup[address]', 'Current location');
+        }
+        params.set('destination[latitude]', String(dropoff.lat));
+        params.set('destination[longitude]', String(dropoff.lng));
+        if (dropoffName) {
+            params.set('destination[address]', String(dropoffName).slice(0, 80));
+            params.set('destination[name]', String(dropoffName).slice(0, 60));
+        }
+        return `${base}?${params.toString()}`;
+    }
+
+    function openRidesharePreview() {
+        const loc = settingsStore?.locationEnabled ? getUserLocationSnapshot() : null;
+        if (!loc) {
+            showToast('Location is off. Pickup will be set to "Current location" inside the app.', 'info');
+        }
+        const next = getNextStopForTransport(activeDayIndex);
+        if (!next) {
+            showToast('No next stop found for directions.', 'info');
+            return;
+        }
+
+        const dropoffLabel = next.address || next.addr || next.location || next.title || `${next.lat},${next.lng}`;
+        const uberUrl = buildUberUrl({ pickup: loc, dropoff: next, dropoffName: dropoffLabel });
+        const lyftUrl = buildLyftUrl({ pickup: loc, dropoff: next, dropoffName: dropoffLabel });
+        const driveUrl = buildGoogleDirectionsUrl({ origin: loc, destination: next, mode: 'driving' });
+
+        assistantTransitHtml = `
+            <div style="color:var(--secondary-text); font-size:0.88rem; line-height:1.35;">
+                We'll open Uber/Lyft with your pickup and destination prefilled (when supported by the provider).
+                <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+                    <a class="assistant-chip" href="${uberUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">Call Uber</a>
+                    <a class="assistant-chip" href="${lyftUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">Call Lyft</a>
+                    <a class="assistant-chip" href="${driveUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">Navigate</a>
+                </div>
+                <div style="margin-top:10px; color:var(--secondary-text); font-size:0.82rem;">
+                    Price comparison is planned for a future update.
+                </div>
+            </div>
+        `;
+        assistantPrevMode = assistantMode;
+        assistantMode = ASSISTANT_STATES.TRANSIT_INFO;
+        renderAssistantInline();
+        const panel = document.getElementById('assistantPanel');
+        if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function openPrivateNavigatePreview() {
+        const loc = settingsStore?.locationEnabled ? getUserLocationSnapshot() : null;
+        const next = getNextStopForTransport(activeDayIndex);
+        if (!next) {
+            showToast('No next stop found for directions.', 'info');
+            return;
+        }
+        const driveUrl = buildGoogleDirectionsUrl({ origin: loc, destination: next, mode: 'driving' });
+        assistantTransitHtml = `
+            <div style="color:var(--secondary-text); font-size:0.88rem; line-height:1.35;">
+                <div style="margin-bottom:8px;"><strong>Next:</strong> ${next.title || 'Next stop'}</div>
+                <a class="assistant-chip" href="${driveUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">Open navigation</a>
+            </div>
+        `;
+        assistantPrevMode = assistantMode;
+        assistantMode = ASSISTANT_STATES.TRANSIT_INFO;
+        renderAssistantInline();
+        const panel = document.getElementById('assistantPanel');
+        if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function openPrivateNavigateDirect() {
+        const loc = settingsStore?.locationEnabled ? getUserLocationSnapshot() : null;
+        const next = getNextStopForTransport(activeDayIndex);
+        if (!next) {
+            showToast('No next stop found for directions.', 'info');
+            return;
+        }
+        const driveUrl = buildGoogleDirectionsUrl({ origin: loc, destination: next, mode: 'driving' });
+        try {
+            window.open(driveUrl, '_blank', 'noopener,noreferrer');
+        } catch (e) {
+            // Fallback: show the preview if the popup is blocked for any reason.
+            openPrivateNavigatePreview();
+        }
+    }
+
+    function getTransportActionLabel() {
+        const mode = getTransportMode();
+        if (mode === 'rideshare') return 'Call Uber/Lyft';
+        if (mode === 'private') return 'Navigate';
+        return 'Open transit options';
+    }
+
     function updateRouteChips(dayNumber) {
         const loc = settingsStore?.locationEnabled ? getUserLocationSnapshot(1000 * 60 * 2) : null;
         const originOverride = loc ? { lat: loc.lat, lng: loc.lng } : null;
@@ -3850,6 +4170,15 @@ function populateAssistantActivities() {
     }
 
     async function openTransitPreview() {
+        const mode = getTransportMode();
+        if (mode === 'rideshare') {
+            openRidesharePreview();
+            return;
+        }
+        if (mode === 'private') {
+            openPrivateNavigateDirect();
+            return;
+        }
         const loc = settingsStore?.locationEnabled ? getUserLocationSnapshot() : null;
         if (!loc) {
             showToast('Enable location to see nearby CTA transit options.', 'info');
@@ -4533,9 +4862,7 @@ function populateAssistantActivities() {
             const lines = reply.split('\n').map(l => l.trim()).filter(Boolean).slice(0,3);
             if (!lines.length) throw new Error('No suggestions returned.');
             listEl.innerHTML = lines.map(line => {
-                const timeMatch = line.match(/(\d{1,2}:\d{2})/);
-                const time = timeMatch ? timeMatch[1] : '--:--';
-                const title = line.replace(/^\s*\d{1,2}:\d{2}\s*[-–—:]\s*/, '').replace(/^[\-\d\.\)\s]+/, '').trim() || line;
+                const { time, title } = parseSuggestionLine(line);
                 return `<div class="hero-card-line"><span>${time}</span><strong>${title}</strong></div>`;
             }).join('');
             metaEl.textContent = `Profile: Tempo ${userPreferences.tempo} | Price ${userPreferences.price} | Transport ${userPreferences.transportation}`;
